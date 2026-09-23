@@ -32,7 +32,8 @@ final class TabSleepManager {
     }
 
     func check(pressure: SleepPolicy.MemoryPressure) {
-        guard !isChecking else { return }
+        // Off in Settings means off, also under memory pressure.
+        guard Preferences.sleepsTabs, !isChecking else { return }
         isChecking = true
         Task {
             defer { isChecking = false }
@@ -70,7 +71,8 @@ final class TabSleepManager {
         let capturing = webView.map { $0.cameraCaptureState != .none || $0.microphoneCaptureState != .none } ?? false
         return SleepPolicy.TabInfo(id: tab.id, lastActive: tab.lastActive, isSelected: isSelected,
                                    isAsleep: tab.isAsleep, isPlayingMedia: media == .playing,
-                                   isCapturing: capturing, hasUnsentInput: tab.hasUnsentInput)
+                                   isCapturing: capturing, hasUnsentInput: tab.hasUnsentInput,
+                                   isPinned: tab.isPinned)
     }
 
     /// `requestMediaPlaybackState` can wait without end for a background web view whose

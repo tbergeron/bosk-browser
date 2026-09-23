@@ -4,7 +4,6 @@
 #
 #   DEVELOPER_ID="Developer ID Application: Your Name (TEAMID)" \
 #   NOTARY_PROFILE=bosk-notary \
-#   SPARKLE_PUBLIC_KEY=<base64 key from generate_keys> \
 #   scripts/release.sh 0.2.0
 #
 set -euo pipefail
@@ -12,8 +11,9 @@ set -euo pipefail
 version=${1:?Usage: scripts/release.sh <version>}
 : "${DEVELOPER_ID:?Set DEVELOPER_ID to your "Developer ID Application: ..." identity}"
 : "${NOTARY_PROFILE:?Set NOTARY_PROFILE to a notarytool keychain profile (xcrun notarytool store-credentials)}"
-SPARKLE_FEED_URL=${SPARKLE_FEED_URL:-https://tommybergeron.github.io/bosk/appcast.xml}
-: "${SPARKLE_PUBLIC_KEY:?Set SPARKLE_PUBLIC_KEY}"
+SPARKLE_FEED_URL=${SPARKLE_FEED_URL:-https://github.com/tbergeron/bosk-browser/releases/latest/download/appcast.xml}
+# The public key is in project.yml; set SPARKLE_PUBLIC_KEY only to override it.
+SPARKLE_PUBLIC_KEY=${SPARKLE_PUBLIC_KEY:-$(sed -nE 's/^ *SPARKLE_PUBLIC_KEY: "(.*)"/\1/p' "$(dirname "$0")/../project.yml")}
 
 root=$(cd "$(dirname "$0")/.." && pwd)
 out="$root/release/$version"
@@ -61,8 +61,8 @@ echo "== Update the appcast"
 # generate_appcast signs the update with the EdDSA private key in your keychain
 # (created by generate_keys) and writes appcast.xml next to the DMGs.
 generate_appcast=$(find "$derived/SourcePackages/artifacts" -name generate_appcast -type f | head -1)
-"$generate_appcast" --download-url-prefix "https://github.com/tommybergeron/bosk/releases/download/v$version/" "$out"
+"$generate_appcast" --download-url-prefix "https://github.com/tbergeron/bosk-browser/releases/download/v$version/" "$out"
 
 echo
 echo "Done: $dmg and $out/appcast.xml"
-echo "Next: create GitHub release v$version with the DMG, then publish appcast.xml at $SPARKLE_FEED_URL."
+echo "Next: create GitHub release v$version and attach the DMG and appcast.xml (the feed is $SPARKLE_FEED_URL)."

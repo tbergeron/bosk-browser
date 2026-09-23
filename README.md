@@ -3,11 +3,11 @@
 A small, fast, opinionated web browser for macOS. Built on WebKit.
 
 - Tabs in a sidebar, pinned tabs as a grid, a sidebar that folds into a strip.
-- Tabs sleep after 60 minutes idle to keep memory low.
+- Tabs sleep after 30 minutes idle to keep memory low. Pinned tabs stay awake. Settings can turn sleep off.
 - Chrome extension support through WebKit's `WKWebExtension`.
 - No account. Nothing collected. Very few settings.
 
-Requires macOS 26 or later.
+Requires macOS 26 or later. Source: https://github.com/tbergeron/bosk-browser
 
 ## Build
 

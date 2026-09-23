@@ -1,12 +1,13 @@
 import Foundation
 import os
 
-/// Every fixed value in Bosk. Bosk is opinionated: change a value here, not in a settings screen.
+/// Every fixed value in Bosk. The few user choices are in `Preferences`; the rest is fixed here.
 enum Defaults {
     static let initialWindowSize = CGSize(width: 1280, height: 820)
     static let minimumWindowSize = CGSize(width: 640, height: 400)
 
     static let searchURL = URL(string: "https://www.google.com/search")!
+    static let projectURL = URL(string: "https://github.com/tbergeron/bosk-browser")!
 
     /// Added to WebKit's user agent. Some sites block browsers they do not know,
     /// so Bosk says it is the Safari version installed on this Mac.
@@ -20,7 +21,7 @@ enum Defaults {
     static let sessionSaveDelay: Duration = .seconds(2)
 
     /// A background tab sleeps after this idle time (see SleepPolicy).
-    static let tabSleepIdleLimit: TimeInterval = debugOverride("BoskSleepAfterSeconds") ?? 60 * 60
+    static let tabSleepIdleLimit: TimeInterval = debugOverride("BoskSleepAfterSeconds") ?? 30 * 60
     /// Idle time before sleep when macOS reports memory pressure.
     static let tabSleepPressureIdleLimit: TimeInterval = 5 * 60
     static let tabSleepCheckInterval: TimeInterval = min(60, tabSleepIdleLimit / 2)

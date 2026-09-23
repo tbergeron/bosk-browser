@@ -45,6 +45,11 @@ actor HistoryStore {
             """)
     }
 
+    /// Deletes all history (Settings > Privacy).
+    func clear() {
+        Self.exec(db, "DELETE FROM history")
+    }
+
     /// Records one visit. Only web pages (http and https) go in history.
     func recordVisit(url: URL, title: String) {
         guard let statement = recordStatement, ["http", "https"].contains(url.scheme ?? "") else { return }

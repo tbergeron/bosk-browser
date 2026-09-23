@@ -46,7 +46,7 @@ Then open http://localhost:8765 in Bosk.
 | Vimium: press `f` on a page | Link hints | **Not tested** (background tools cannot send keys to a page); the background script fails, see extension-compat.md |
 | Bitwarden: sign in in the popup, autofill a login form | Works | **Not tested**; the background script fails, see extension-compat.md |
 | Settings > Extensions: switch one off, Remove one | The button goes away; after Remove, the extension is gone after relaunch | Not tested by a person |
-| Settings > Add Extension from Disk… with scripts/test-extension | Installs after the prompt | Tested through the Debug option `-BoskInstallExtension`, not through the panel |
+| Settings > Extensions > Load an unpacked extension > Choose… with scripts/test-extension | Installs after the prompt | Tested through the Debug option `-BoskInstallExtension`, not through the panel |
 
 ## Settings and default browser (M7)
 
@@ -56,3 +56,25 @@ Then open http://localhost:8765 in Bosk.
 | Settings > default page zoom 150 % | Open and new tabs show pages at 150 % | New tabs: yes (set with `defaults write`). The picker itself: not tested by a person |
 | Cmd+= / Cmd+- / Cmd+0 | Zoom one tab; Cmd+0 goes back to the default | Not tested |
 | Double-click an .html file in Finder, with Bosk as its app | Opens in a new Bosk tab | Not tested |
+
+## Settings window (panes)
+
+| Check | Expected | Verified |
+|---|---|---|
+| Open Settings (Cmd+,) and click each pane | General, Tabs, Extensions, Downloads, Privacy, About show their cards | Yes (screenshots, dark and light) |
+| General > Appearance: Light, Dark, System | Settings, browser window and sidebar change at once | Light and System: yes |
+| General > Appearance on a page that uses `prefers-color-scheme` | The page changes with the setting | Not tested |
+| General > Correct spelling as you type: on, then type "teh " in a text field | The word is corrected; with the switch off it is not. If it works only after a relaunch, the row text must say so | **Not tested** (Bosk writes WebKit's `WebAutomaticSpellingCorrectionEnabled` key; not confirmed that WebKit reads it) |
+| Tabs > Sleep tabs, launch with `-BoskSleepAfterSeconds 15` | A normal background tab sleeps; a pinned tab stays awake | Not tested (pinned rule: unit test only) |
+| Tabs > Sleep tabs off | No tab sleeps, also under memory pressure | Not tested |
+| Downloads > Change…, then download /download | The file goes to the new folder. If the folder is deleted later, files go to ~/Downloads | Not tested |
+| Downloads > Ask where to save each file, then download | A save panel opens; Cancel stops the download and removes it from the list | Not tested |
+| Privacy > History > Clear | Asks first; after that, command bar suggestions show no visited sites | Not tested |
+| Privacy > Sign out of everything | Asks first; after that, a site you were signed in to asks you to sign in | Not tested |
+| Privacy > Cache > Clear | No prompt; sign-ins stay | Not tested |
+| Extensions > paste a store link, and a bare ID | Add turns on; Add shows the permission prompt and installs | Not tested |
+| Extensions > Open the Store | chromewebstore.google.com opens in a tab of a browser window | Not tested |
+| Extensions > … > Reload on an unpacked extension, after a change in its folder | The change takes effect; permissions stay | Not tested |
+| Extensions > … > Remove | The extension is gone, also after relaunch | Not tested |
+| About > Send Feedback | A GitHub new-issue page opens with the Bosk and macOS versions in the text | Not tested |
+| About > Check now | Off in builds without a Sparkle feed ("Not set up in this build") | Yes (Debug build) |

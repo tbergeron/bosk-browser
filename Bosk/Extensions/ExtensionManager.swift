@@ -21,6 +21,8 @@ final class ExtensionManager: NSObject {
         var grantedMatchPatterns: [String: Date] = [:]
         var deniedPermissions: [String: Date] = [:]
         var deniedMatchPatterns: [String: Date] = [:]
+        /// The user's own folder, for an unpacked install. Reload copies it again.
+        var sourcePath: String?
     }
 
     private(set) var records: [Record] = []
@@ -111,14 +113,33 @@ final class ExtensionManager: NSObject {
     func install(from source: URL, in window: NSWindow?) async throws {
         let id = UUID().uuidString
         let fileName: String
+        var sourcePath: String?
         if source.hasDirectoryPath {
             fileName = id
+            sourcePath = source.path
             try FileManager.default.copyItem(at: source, to: directory.appending(path: fileName))
         } else {
             fileName = id
             try await unpackArchive(Data(contentsOf: source), into: fileName)
         }
-        try await finishInstall(Record(id: id, fileName: fileName, enabled: true), in: window)
+        try await finishInstall(Record(id: id, fileName: fileName, enabled: true, sourcePath: sourcePath), in: window)
+    }
+
+    /// Copies an unpacked extension's folder again, so changes the user made in it take effect.
+    /// Keeps the ID, so storage and permissions stay.
+    func reload(id: String) async throws {
+        saveRegistry() // The record then has the permissions granted since launch.
+        guard let record = records.first(where: { $0.id == id }), let sourcePath = record.sourcePath else { return }
+        let source = URL(fileURLWithPath: sourcePath, isDirectory: true)
+        guard FileManager.default.fileExists(atPath: source.path) else {
+            throw CocoaError(.fileReadNoSuchFile, userInfo: [NSFilePathErrorKey: source.path])
+        }
+        unload(id)
+        let installed = directory.appending(path: record.fileName)
+        try? FileManager.default.removeItem(at: installed)
+        try FileManager.default.copyItem(at: source, to: installed)
+        if record.enabled { try await load(record) }
+        changed()
     }
 
     /// Installs a Chrome Web Store extension (a user click on "Add to Bosk").

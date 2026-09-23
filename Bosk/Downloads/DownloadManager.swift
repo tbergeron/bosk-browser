@@ -1,7 +1,8 @@
 import AppKit
 import WebKit
 
-/// Downloads go to ~/Downloads. The list lives until Bosk quits.
+/// Downloads go to the folder chosen in Settings (~/Downloads at first), or to where the
+/// user says for each file. The list lives until Bosk quits.
 @MainActor
 final class DownloadManager: NSObject, WKDownloadDelegate {
     static let shared = DownloadManager()
@@ -51,7 +52,22 @@ final class DownloadManager: NSObject, WKDownloadDelegate {
 
     func download(_ download: WKDownload, decideDestinationUsing response: URLResponse,
                   suggestedFilename: String) async -> URL? {
-        let destination = Self.uniqueURL(in: .downloadsDirectory, name: suggestedFilename)
+        let folder = Preferences.downloadFolder
+        let destination: URL
+        if Preferences.asksWhereToSave {
+            let panel = NSSavePanel()
+            panel.nameFieldStringValue = suggestedFilename
+            panel.directoryURL = folder
+            guard await panel.begin() == .OK, let url = panel.url else {
+                // Returning nil cancels the download; it leaves the list.
+                items.removeAll { $0.download === download }
+                changed()
+                return nil
+            }
+            destination = url
+        } else {
+            destination = Self.uniqueURL(in: folder, name: suggestedFilename)
+        }
         if let item = item(for: download) {
             item.filename = destination.lastPathComponent
             item.destination = destination

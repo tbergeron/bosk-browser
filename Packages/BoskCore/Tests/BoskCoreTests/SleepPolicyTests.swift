@@ -51,6 +51,15 @@ struct SleepPolicyTests {
         #expect(sleep([draft], pressure: .critical).isEmpty)
     }
 
+    @Test("A pinned tab stays awake, because the user keeps that site open and a reload loses their place")
+    func pinnedStaysAwake() {
+        var pinned = tab(idle: 2 * hour)
+        pinned.isPinned = true
+        let normal = tab(idle: 2 * hour)
+        #expect(sleep([pinned, normal]) == [normal.id])
+        #expect(sleep([pinned, normal], pressure: .critical) == [normal.id])
+    }
+
     @Test("A tab that is already asleep is not put to sleep again")
     func asleepIsSkipped() {
         var asleep = tab(idle: 5 * hour)

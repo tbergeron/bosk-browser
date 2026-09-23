@@ -14,9 +14,12 @@ public enum SleepPolicy {
         public var isCapturing: Bool
         /// Text typed in a form and not sent yet.
         public var hasUnsentInput: Bool
+        /// A pinned site: the user keeps it open, so a reload there is always a cost.
+        public var isPinned: Bool
 
         public init(id: UUID, lastActive: Date, isSelected: Bool = false, isAsleep: Bool = false,
-                    isPlayingMedia: Bool = false, isCapturing: Bool = false, hasUnsentInput: Bool = false) {
+                    isPlayingMedia: Bool = false, isCapturing: Bool = false, hasUnsentInput: Bool = false,
+                    isPinned: Bool = false) {
             self.id = id
             self.lastActive = lastActive
             self.isSelected = isSelected
@@ -24,6 +27,7 @@ public enum SleepPolicy {
             self.isPlayingMedia = isPlayingMedia
             self.isCapturing = isCapturing
             self.hasUnsentInput = hasUnsentInput
+            self.isPinned = isPinned
         }
     }
 
@@ -32,7 +36,7 @@ public enum SleepPolicy {
     }
 
     /// - Parameters:
-    ///   - idleLimit: Normal sleep time (60 minutes in Bosk).
+    ///   - idleLimit: Normal sleep time (30 minutes in Bosk).
     ///   - pressureIdleLimit: Sleep time when macOS reports memory pressure.
     /// - Returns: Tab IDs to sleep, oldest first.
     public static func tabsToSleep(_ tabs: [TabInfo], now: Date, idleLimit: TimeInterval,
@@ -52,5 +56,6 @@ public enum SleepPolicy {
     /// sleep would reload the page and lose what the user is doing.
     static func canSleep(_ tab: TabInfo) -> Bool {
         !tab.isAsleep && !tab.isSelected && !tab.isPlayingMedia && !tab.isCapturing && !tab.hasUnsentInput
+            && !tab.isPinned
     }
 }

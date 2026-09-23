@@ -50,8 +50,15 @@ public enum ChromeExtensionPackage {
         return detail.first(where: isExtensionID)
     }
 
+    /// The extension ID in what the user pasted in Settings: a store page address or the ID itself.
+    public static func extensionID(fromUserInput text: String) -> String? {
+        let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        if isExtensionID(trimmed.lowercased()) { return trimmed.lowercased() }
+        return URL(string: trimmed).flatMap(webStoreExtensionID(from:))
+    }
+
     /// Chrome extension IDs are 32 letters from a to p.
-    static func isExtensionID(_ text: String) -> Bool {
+    public static func isExtensionID(_ text: String) -> Bool {
         text.count == 32 && text.allSatisfy { ("a"..."p").contains($0) }
     }
 

@@ -60,6 +60,21 @@ struct ChromeExtensionPackageTests {
         #expect(ChromeExtensionPackage.webStoreExtensionID(from: short) == id)
     }
 
+    @Test("Settings accepts a pasted store address or a bare ID, so the user can paste what they have")
+    func pastedInput() {
+        let id = "ddkjiahejlhfcafbddmgiahcphecmpfh"
+        #expect(ChromeExtensionPackage.extensionID(fromUserInput: "https://chromewebstore.google.com/detail/ublock-origin-lite/\(id)") == id)
+        #expect(ChromeExtensionPackage.extensionID(fromUserInput: "https://chrome.google.com/webstore/detail/x/\(id)") == id)
+        #expect(ChromeExtensionPackage.extensionID(fromUserInput: "  \(id.uppercased())\n") == id)
+    }
+
+    @Test("Settings refuses other text, so Add is off until the input is an extension")
+    func pastedInputRefused() {
+        #expect(ChromeExtensionPackage.extensionID(fromUserInput: "https://example.com/detail/ddkjiahejlhfcafbddmgiahcphecmpfh") == nil)
+        #expect(ChromeExtensionPackage.extensionID(fromUserInput: "ddkjiahejlhfcafbddmgiahcphecmpf") == nil)
+        #expect(ChromeExtensionPackage.extensionID(fromUserInput: "") == nil)
+    }
+
     @Test("Other store pages and other sites show no Add button")
     func noIDElsewhere() {
         #expect(ChromeExtensionPackage.webStoreExtensionID(from: URL(string: "https://chromewebstore.google.com/category/extensions")!) == nil)

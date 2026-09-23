@@ -15,6 +15,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         NSApp.mainMenu = MainMenu.make()
+        Preferences.applyAppearance()
         Updater.start()
         SessionStore.shared.snapshotProvider = { [weak self] in
             Session(windows: self?.windowControllers.map(\.windowState) ?? [],
@@ -125,6 +126,19 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     @objc func newWindow(_ sender: Any?) { openWindow() }
     @objc func showSettings(_ sender: Any?) { SettingsWindowController.shared.show() }
+
+    /// The standard About window, with a link to the source code.
+    @objc func showAbout(_ sender: Any?) {
+        let paragraph = NSMutableParagraphStyle()
+        paragraph.alignment = .center
+        let credits = NSAttributedString(string: "Open source on GitHub", attributes: [
+            .link: Defaults.projectURL,
+            .font: NSFont.systemFont(ofSize: NSFont.smallSystemFontSize),
+            .paragraphStyle: paragraph,
+        ])
+        NSApp.orderFrontStandardAboutPanel(options: [.credits: credits])
+        NSApp.activate()
+    }
     @objc func checkForUpdates(_ sender: Any?) { Updater.checkForUpdates() }
 
     func validateMenuItem(_ menuItem: NSMenuItem) -> Bool {

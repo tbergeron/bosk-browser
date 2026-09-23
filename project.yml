@@ -31,6 +31,8 @@ targets:
       path: Bosk/Resources/Info.plist
       properties:
         CFBundleDisplayName: Bosk
+        CFBundleShortVersionString: $(MARKETING_VERSION)
+        CFBundleVersion: $(CURRENT_PROJECT_VERSION)
         LSApplicationCategoryType: public.app-category.productivity
         NSPrincipalClass: NSApplication
         NSCameraUsageDescription: A website you use wants to use the camera.
@@ -54,10 +56,12 @@ targets:
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.tommybergeron.Bosk
-        # Set these before the first release (see docs/release.md). Empty = no update checks.
+        # The public half of the update signing key (the private half is in the keychain).
+        SPARKLE_PUBLIC_KEY: "g8L9wznByLwva7s4Of5lXw63TMfPM9zjeDpb0/L96qI="
+        # Empty in development builds, so they never check for updates; scripts/release.sh sets it.
         SPARKLE_FEED_URL: ""
-        SPARKLE_PUBLIC_KEY: ""
         ENABLE_HARDENED_RUNTIME: YES
+        ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
         CODE_SIGN_ENTITLEMENTS: Bosk/Resources/Bosk.entitlements
         # Local builds are ad-hoc signed. scripts/release.sh signs with Developer ID.
         CODE_SIGN_IDENTITY: "-"

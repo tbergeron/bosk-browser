@@ -20,14 +20,16 @@ These steps need your Apple Developer account and your keychain, so they are not
    ```bash
    build/SourcePackages/artifacts/sparkle/Sparkle/bin/generate_keys
    ```
-4. **GitHub.** Create the repository `tommybergeron/bosk` and turn on GitHub Pages.
-   The DMGs go to GitHub Releases, and the update feed is
-   `https://tommybergeron.github.io/bosk/appcast.xml` (the default in `scripts/release.sh`).
+4. **GitHub.** The repository `tbergeron/bosk-browser` must be **public**, so people can download
+   the DMG and Sparkle can read the feed without signing in. No GitHub Pages: the feed is a file
+   attached to each release, at
+   `https://github.com/tbergeron/bosk-browser/releases/latest/download/appcast.xml`
+   (the default in `scripts/release.sh`). GitHub sends that address to the newest release.
 
 ## Each release
 
 ```bash
-DEVELOPER_ID="Developer ID Application: Your Name (TEAMID)" NOTARY_PROFILE=bosk-notary SPARKLE_PUBLIC_KEY=… scripts/release.sh 0.2.0
+DEVELOPER_ID="Developer ID Application: Your Name (TEAMID)" NOTARY_PROFILE=bosk-notary scripts/release.sh 0.2.0
 ```
 
 The script:
@@ -38,8 +40,8 @@ The script:
 5. makes, signs, notarizes and staples the DMG;
 6. updates `appcast.xml`.
 
-Then upload the DMG to the GitHub release `v<version>` of tommybergeron/bosk, and publish
-`appcast.xml` on GitHub Pages.
+Then create the GitHub release `v<version>` of tbergeron/bosk-browser, and attach both the DMG
+and `appcast.xml`. Mark it as the latest release, so the feed address points to it.
 
 ## Check before publishing
 
