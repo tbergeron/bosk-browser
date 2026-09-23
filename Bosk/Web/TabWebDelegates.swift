@@ -45,7 +45,7 @@ extension Tab: WKNavigationDelegate {
     }
 
     func webView(_ webView: WKWebView, didCommit navigation: WKNavigation!) {
-        hasUnsentInput = false
+        framesWithUnsentInput.removeAll()
     }
 
     func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
@@ -69,9 +69,21 @@ extension Tab: WKNavigationDelegate {
         showErrorPage(error, in: webView)
     }
 
-    /// The page's process crashed or was killed. Load the page again instead of a blank tab.
+    /// The page's process crashed or was killed, often to free memory. A background tab
+    /// sleeps and loads again when selected. The selected tab loads again, but a page that
+    /// crashes on each load gets the error page, not a reload loop.
     func webViewWebContentProcessDidTerminate(_ webView: WKWebView) {
-        webView.reload()
+        guard self === store?.selectedTab else { return sleep() }
+        let now = Date()
+        crashReloads = crashReloads.filter { now.timeIntervalSince($0) < 60 } + [now]
+        guard crashReloads.count > Defaults.crashReloadLimit else {
+            webView.reload()
+            return
+        }
+        showErrorPage(NSError(domain: "Bosk", code: 0, userInfo: [
+            NSLocalizedDescriptionKey: "The page stopped working again and again.",
+            NSURLErrorFailingURLErrorKey: webView.url as Any,
+        ]), in: webView)
     }
 
     func webView(_ webView: WKWebView, respondTo challenge: URLAuthenticationChallenge) async
@@ -88,8 +100,10 @@ extension Tab: WKNavigationDelegate {
 
     private func showErrorPage(_ error: any Error, in webView: WKWebView) {
         let error = error as NSError
-        // Cancelled loads (a new navigation started) and "frame load interrupted" (downloads) are not errors.
-        guard error.code != NSURLErrorCancelled, !(error.domain == "WebKitErrorDomain" && error.code == 102) else { return }
+        // Cancelled loads (a new navigation started), "frame load interrupted" (downloads) and
+        // "plug-in handled load" (a video or PDF opened directly) are not errors.
+        guard error.code != NSURLErrorCancelled,
+              !(error.domain == "WebKitErrorDomain" && [102, 204].contains(error.code)) else { return }
         let failedURL = (error.userInfo[NSURLErrorFailingURLErrorKey] as? URL) ?? webView.url
         errorPageURL = failedURL
         webView.loadHTMLString(PageDialogs.errorPage(message: error.localizedDescription, url: failedURL),
@@ -112,6 +126,18 @@ extension Tab: WKUIDelegate {
 
     func webViewDidClose(_ webView: WKWebView) {
         store?.close(self)
+    }
+
+    /// Private WKUIDelegate call (Safari uses it for its status bar): WebKit sends the
+    /// element under the mouse on each mouse move. `absoluteLinkURL` is nil off a link.
+    @objc(_webView:mouseDidMoveOverElement:withFlags:userInfo:)
+    func webView(_ webView: WKWebView, mouseDidMoveOverElement hitTestResult: NSObject?,
+                 withFlags flags: NSEvent.ModifierFlags, userInfo: Any?) {
+        guard let hitTestResult, hitTestResult.responds(to: NSSelectorFromString("absoluteLinkURL")) else {
+            hoveredLink = nil
+            return
+        }
+        hoveredLink = hitTestResult.value(forKey: "absoluteLinkURL") as? URL
     }
 
     func webView(_ webView: WKWebView, runJavaScriptAlertPanelWithMessage message: String,

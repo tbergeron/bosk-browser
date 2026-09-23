@@ -1,7 +1,7 @@
 import AppKit
 import BoskCore
 
-/// Pinned tabs as favicon tiles: 3 columns when the sidebar is open, 1 column in the strip.
+/// Pinned tabs as favicon tiles: 3 or more columns when the sidebar is open, 1 column in the strip.
 @MainActor
 final class PinnedGridView: NSView {
     var onSelect: ((Tab) -> Void)?
@@ -33,9 +33,19 @@ final class PinnedGridView: NSView {
 
     @available(*, unavailable)
     required init?(coder: NSCoder) { fatalError("init(coder:) is not used") }
-    var columns = 3 { didSet { needsLayout = true } }
+    /// Folded sidebar: one column.
+    var isCompact = false { didSet { needsLayout = true } }
     let spacing: CGFloat = 8
-    var tileHeight: CGFloat { columns == 1 ? 44 : 52 }
+    var tileHeight: CGFloat { isCompact ? 44 : 52 }
+    /// About the tile width in a sidebar of the default width (3 columns).
+    private let preferredTileWidth: CGFloat = 72
+    private var columns: Int { columns(forWidth: bounds.width) }
+
+    /// A wider sidebar gets more tiles in a row, not wider tiles. Never fewer than 3.
+    private func columns(forWidth width: CGFloat) -> Int {
+        guard !isCompact else { return 1 }
+        return max(3, Int(((width + spacing) / (preferredTileWidth + spacing)).rounded()))
+    }
 
     override var isFlipped: Bool { true }
 
@@ -62,6 +72,7 @@ final class PinnedGridView: NSView {
 
     func height(forWidth width: CGFloat) -> CGFloat {
         guard !tiles.isEmpty else { return isShowingDropZone ? tileHeight : 0 }
+        let columns = columns(forWidth: width)
         let rows = (tiles.count + columns - 1) / columns
         return CGFloat(rows) * tileHeight + CGFloat(rows - 1) * spacing
     }

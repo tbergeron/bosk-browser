@@ -47,4 +47,19 @@ struct FaviconPickerTests {
         let local = URL(string: "http://localhost:3000/app")!
         #expect(FaviconPicker.pick(from: [], pageURL: local)?.absoluteString == "http://localhost:3000/favicon.ico")
     }
+
+    @Test("A hostile sizes value does not stop the app, because any page can declare one")
+    func hostileSizesDoNotTrap() {
+        let picked = FaviconPicker.pick(from: [candidate("/neg.png", "-1000000000000000000x1"),
+                                               candidate("/huge.png", "99999999999999999999x1"),
+                                               candidate("/32.png", "32x32")], pageURL: page)
+        #expect(picked?.lastPathComponent == "32.png")
+    }
+
+    @Test("Only http and https icons are used, so a page cannot make Bosk read local files")
+    func webSchemesOnly() {
+        let local = FaviconPicker.Candidate(url: URL(string: "file:///etc/icon.png")!, sizes: "64x64", rel: "icon")
+        let picked = FaviconPicker.pick(from: [local], pageURL: page)
+        #expect(picked?.absoluteString == "https://github.com/favicon.ico")
+    }
 }

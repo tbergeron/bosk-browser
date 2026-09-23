@@ -20,14 +20,16 @@ final class DownloadManager: NSObject, WKDownloadDelegate {
     private(set) var items: [Item] = []
     private var observers: [ObjectIdentifier: () -> Void] = [:]
     private var progressObservations: [NSKeyValueObservation] = []
+    private var progressUpdatePending = false
 
     var hasRunningDownloads: Bool { items.contains { $0.state == .running } }
 
     func track(_ download: WKDownload) {
         download.delegate = self
         items.insert(Item(download: download), at: 0)
+        // Progress changes for each received chunk, maybe not on the main thread.
         progressObservations.append(download.progress.observe(\.fractionCompleted) { _, _ in
-            MainActor.assumeIsolated { DownloadManager.shared.changed() }
+            DispatchQueue.main.async { MainActor.assumeIsolated { DownloadManager.shared.progressChanged() } }
         })
         changed()
     }
@@ -42,6 +44,18 @@ final class DownloadManager: NSObject, WKDownloadDelegate {
 
     private func changed() {
         observers.values.forEach { $0() }
+    }
+
+    /// Updates the UI at most 4 times a second for progress.
+    private func progressChanged() {
+        guard !progressUpdatePending else { return }
+        progressUpdatePending = true
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) {
+            MainActor.assumeIsolated {
+                self.progressUpdatePending = false
+                self.changed()
+            }
+        }
     }
 
     private func item(for download: WKDownload) -> Item? {
@@ -64,9 +78,14 @@ final class DownloadManager: NSObject, WKDownloadDelegate {
                 changed()
                 return nil
             }
+            // The panel asked the user to replace a file with this name; WebKit does not
+            // write over a file.
+            try? FileManager.default.removeItem(at: url)
             destination = url
         } else {
-            destination = Self.uniqueURL(in: folder, name: suggestedFilename)
+            // WebKit makes the file later, so also skip names that running downloads will use.
+            let taken = Set(items.filter { $0.state == .running }.compactMap { $0.destination?.path })
+            destination = Self.uniqueURL(in: folder, name: suggestedFilename, excluding: taken)
         }
         if let item = item(for: download) {
             item.filename = destination.lastPathComponent
@@ -92,12 +111,12 @@ final class DownloadManager: NSObject, WKDownloadDelegate {
     }
 
     /// "file.zip", then "file 2.zip", "file 3.zip", …
-    static func uniqueURL(in directory: URL, name: String) -> URL {
+    static func uniqueURL(in directory: URL, name: String, excluding taken: Set<String> = []) -> URL {
         let base = (name as NSString).deletingPathExtension
         let ext = (name as NSString).pathExtension
         var candidate = directory.appending(path: name)
         var number = 2
-        while FileManager.default.fileExists(atPath: candidate.path) {
+        while taken.contains(candidate.path) || FileManager.default.fileExists(atPath: candidate.path) {
             candidate = directory.appending(path: ext.isEmpty ? "\(base) \(number)" : "\(base) \(number).\(ext)")
             number += 1
         }

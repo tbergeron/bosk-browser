@@ -14,6 +14,9 @@ final class ExtensionActionsView: NSView {
     private let listPopover = NSPopover()
     /// The button that follows the mouse while the user drags it.
     private var draggedID: String?
+    /// While a button is pressed, the press loop uses `order`, so reloads wait until it ends.
+    private var isTrackingPress = false
+    private var reloadAfterPress = false
 
     override init(frame: NSRect) {
         super.init(frame: frame)
@@ -38,6 +41,7 @@ final class ExtensionActionsView: NSView {
     }
 
     func reload() {
+        guard !isTrackingPress else { return reloadAfterPress = true }
         let contexts = ExtensionManager.shared.loadedContexts
         let ids = contexts.map(\.uniqueIdentifier)
         order = ExtensionToolbarOrder.visible(ids: ids, order: Preferences.extensionOrder,
@@ -50,20 +54,38 @@ final class ExtensionActionsView: NSView {
             let id = context.uniqueIdentifier
             let button = buttons[id] ?? makeButton(id)
             buttons[id] = button
-            let action = context.action(for: currentTab())
-            button.image = action?.icon(for: NSSize(width: 16, height: 16))
-                ?? context.webExtension.icon(for: NSSize(width: 16, height: 16))
-                ?? NSImage(systemSymbolName: "puzzlepiece.extension", accessibilityDescription: nil)
-            button.toolTip = action?.label ?? context.webExtension.displayName
-            button.setAccessibilityLabel(button.toolTip)
-            button.isEnabled = action?.isEnabled ?? true
-            (button as? BadgeButton)?.badge = action?.badgeText ?? ""
+            update(button, for: context)
         }
         listButton.isHidden = contexts.isEmpty
-        // Rows change in place: a new view under the mouse loses the next click.
-        (listPopover.contentViewController as? ExtensionsList)?.reloadRows()
+        reloadListRows()
         needsLayout = true
         superview?.needsLayout = true
+    }
+
+    /// One extension changed its icon, badge or title (often, for a blocker's count).
+    /// Updates only its button, and the list when it shows.
+    func reload(_ context: WKWebExtensionContext) {
+        guard !isTrackingPress else { return reloadAfterPress = true }
+        if let button = buttons[context.uniqueIdentifier] { update(button, for: context) }
+        reloadListRows()
+    }
+
+    private func update(_ button: NSButton, for context: WKWebExtensionContext) {
+        let action = context.action(for: currentTab())
+        button.image = action?.icon(for: NSSize(width: 16, height: 16))
+            ?? context.webExtension.icon(for: NSSize(width: 16, height: 16))
+            ?? NSImage(systemSymbolName: "puzzlepiece.extension", accessibilityDescription: nil)
+        button.toolTip = action?.label ?? context.webExtension.displayName
+        button.setAccessibilityLabel(button.toolTip)
+        button.isEnabled = action?.isEnabled ?? true
+        (button as? BadgeButton)?.badge = action?.badgeText ?? ""
+    }
+
+    /// Rows change in place: a new view under the mouse loses the next click.
+    /// A closed list is made again when it opens.
+    private func reloadListRows() {
+        guard listPopover.isShown else { return }
+        (listPopover.contentViewController as? ExtensionsList)?.reloadRows()
     }
 
     private func makeButton(_ id: String) -> NSButton {
@@ -159,6 +181,14 @@ final class ExtensionActionsView: NSView {
     /// A click runs the action; a drag moves the button, and the others make room.
     fileprivate func trackPress(on button: NSButton, with event: NSEvent) {
         guard let id = button.identifier?.rawValue, let window, var index = order.firstIndex(of: id) else { return }
+        isTrackingPress = true
+        defer {
+            isTrackingPress = false
+            if reloadAfterPress {
+                reloadAfterPress = false
+                reload()
+            }
+        }
         let start = convert(event.locationInWindow, from: nil)
         let startX = button.frame.minX
         var isDragging = false
@@ -237,7 +267,10 @@ private final class ExtensionsList: NSViewController {
         let separator = NSBox()
         separator.boxType = .separator
         separator.widthAnchor.constraint(equalToConstant: Self.rowWidth).isActive = true
+        // The same space above and below the line as between the last row and the popup edge.
+        if let last = stack.arrangedSubviews.last { stack.setCustomSpacing(stack.edgeInsets.bottom, after: last) }
         stack.addArrangedSubview(separator)
+        stack.setCustomSpacing(stack.edgeInsets.bottom, after: separator)
         stack.addArrangedSubview(footerRow("Chrome Web Store\u{2026}", symbol: "storefront", action: #selector(openStore)))
         stack.addArrangedSubview(footerRow("Manage Extensions\u{2026}", symbol: "gearshape", action: #selector(manage)))
         // The popover takes this size. Without it, the popover is narrower than the rows
@@ -311,6 +344,8 @@ private final class BadgeButton: NSButton {
         didSet {
             badgeLayer.string = badge
             badgeLayer.isHidden = badge.isEmpty
+            // The badge width follows the text length.
+            needsLayout = true
         }
     }
     private let badgeLayer = CATextLayer()

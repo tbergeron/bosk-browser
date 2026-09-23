@@ -33,8 +33,10 @@ enum Defaults {
     /// Idle time before sleep when macOS reports memory pressure.
     static let tabSleepPressureIdleLimit: TimeInterval = 5 * 60
     static let tabSleepCheckInterval: TimeInterval = min(60, tabSleepIdleLimit / 2)
-    /// Width in points of the page picture shown while a sleeping tab wakes.
+    /// Width in pixels (at most) of the page picture shown while a sleeping tab wakes.
     static let snapshotWidth: CGFloat = 900
+    /// Reloads of the selected tab after its page process stops, in one minute.
+    static let crashReloadLimit = 3
 
     static let topBarHeight: CGFloat = 44
     /// The open sidebar's width until the user drags its edge (see Preferences.sidebarWidth).

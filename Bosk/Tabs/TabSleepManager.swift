@@ -14,6 +14,8 @@ final class TabSleepManager {
     private var timer: Timer?
     private var pressureSource: DispatchSourceMemoryPressure?
     private var isChecking = false
+    /// Memory pressure reported during a check. macOS reports each change one time only.
+    private var pendingPressure: SleepPolicy.MemoryPressure?
 
     func start() {
         timer = Timer.scheduledTimer(withTimeInterval: Defaults.tabSleepCheckInterval, repeats: true) { _ in
@@ -33,10 +35,20 @@ final class TabSleepManager {
 
     func check(pressure: SleepPolicy.MemoryPressure) {
         // Off in Settings means off, also under memory pressure.
-        guard Preferences.sleepsTabs, !isChecking else { return }
+        guard Preferences.sleepsTabs else { return }
+        guard !isChecking else {
+            if pressure == .critical || (pressure == .warning && pendingPressure == nil) { pendingPressure = pressure }
+            return
+        }
         isChecking = true
         Task {
-            defer { isChecking = false }
+            defer {
+                isChecking = false
+                if let next = pendingPressure {
+                    pendingPressure = nil
+                    check(pressure: next)
+                }
+            }
             let stores = storesProvider?() ?? []
             var tabsByID: [UUID: Tab] = [:]
             var selectedIDs: Set<UUID> = []
@@ -44,11 +56,19 @@ final class TabSleepManager {
                 for tab in store.allTabs where !tab.isAsleep { tabsByID[tab.id] = tab }
                 if let selected = store.selectedTab { selectedIDs.insert(selected.id) }
             }
-            // Ask all pages at the same time: each answer can take up to the timeout.
+            // First without media: only tabs that could sleep are asked about media, because
+            // each question can wake a suspended page.
+            let now = Date()
+            let candidates = SleepPolicy.tabsToSleep(
+                tabsByID.values.map { info(for: $0, isSelected: selectedIDs.contains($0.id), isPlayingMedia: false) },
+                now: now, idleLimit: Defaults.tabSleepIdleLimit,
+                pressureIdleLimit: Defaults.tabSleepPressureIdleLimit, pressure: pressure)
+            guard !candidates.isEmpty else { return }
+            // Ask the pages at the same time: each answer can take up to the timeout.
             let infos = await withTaskGroup(of: SleepPolicy.TabInfo.self) { group in
-                for tab in tabsByID.values {
-                    let isSelected = selectedIDs.contains(tab.id)
-                    group.addTask { await self.info(for: tab, isSelected: isSelected) }
+                for id in candidates {
+                    guard let tab = tabsByID[id] else { continue }
+                    group.addTask { await self.info(for: tab, isSelected: false) }
                 }
                 var infos: [SleepPolicy.TabInfo] = []
                 for await info in group { infos.append(info) }
@@ -66,11 +86,15 @@ final class TabSleepManager {
     }
 
     private func info(for tab: Tab, isSelected: Bool) async -> SleepPolicy.TabInfo {
+        let media: WKMediaPlaybackState? = if let webView = tab.webView { await mediaState(webView) } else { nil }
+        return info(for: tab, isSelected: isSelected, isPlayingMedia: media == .playing)
+    }
+
+    private func info(for tab: Tab, isSelected: Bool, isPlayingMedia: Bool) -> SleepPolicy.TabInfo {
         let webView = tab.webView
-        let media: WKMediaPlaybackState? = if let webView { await mediaState(webView) } else { nil }
         let capturing = webView.map { $0.cameraCaptureState != .none || $0.microphoneCaptureState != .none } ?? false
         return SleepPolicy.TabInfo(id: tab.id, lastActive: tab.lastActive, isSelected: isSelected,
-                                   isAsleep: tab.isAsleep, isPlayingMedia: media == .playing,
+                                   isAsleep: tab.isAsleep, isPlayingMedia: isPlayingMedia,
                                    isCapturing: capturing, hasUnsentInput: tab.hasUnsentInput,
                                    isPinned: tab.isPinned)
     }

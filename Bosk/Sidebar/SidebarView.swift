@@ -23,6 +23,8 @@ final class SidebarView: NSView, NSTableViewDataSource, NSTableViewDelegate {
     private let dismissUpdateButton = NSButton()
     /// Folded: a narrow strip of icons.
     private(set) var isCompact = false
+    /// The normal tab in a drag from the tab list.
+    private var draggedTab: Tab?
 
     init(store: TabStore) {
         self.store = store
@@ -106,7 +108,7 @@ final class SidebarView: NSView, NSTableViewDataSource, NSTableViewDelegate {
     func setCompact(_ compact: Bool) {
         guard compact != isCompact else { return }
         isCompact = compact
-        pinnedGrid.columns = compact ? 1 : 3
+        pinnedGrid.isCompact = compact
         foldButton.image = NSImage(systemSymbolName: compact ? "sidebar.right" : "sidebar.left",
                                    accessibilityDescription: compact ? "Unfold Sidebar" : "Fold Sidebar")
         reloadTabs()
@@ -142,11 +144,12 @@ final class SidebarView: NSView, NSTableViewDataSource, NSTableViewDelegate {
     override func layout() {
         super.layout()
         let padding: CGFloat = isCompact ? 8 : 10
+        // The folded strip starts under the top bar, so its fold button is at the top.
         foldButton.frame = isCompact
-            ? NSRect(x: bounds.midX - 14, y: Defaults.sidebarHeaderHeight - 6, width: 28, height: 28)
+            ? NSRect(x: bounds.midX - 14, y: 8, width: 28, height: 28)
             : NSRect(x: bounds.maxX - 38, y: 8, width: 28, height: 28)
         layoutUpdateButton()
-        var y = Defaults.sidebarHeaderHeight + (isCompact ? 28 : 0)
+        var y = isCompact ? foldButton.frame.maxY + 6 : Defaults.sidebarHeaderHeight
         let gridWidth = bounds.width - padding * 2
         let gridHeight = pinnedGrid.height(forWidth: gridWidth)
         pinnedGrid.frame = NSRect(x: padding, y: y, width: gridWidth, height: gridHeight)
@@ -214,6 +217,9 @@ final class SidebarView: NSView, NSTableViewDataSource, NSTableViewDelegate {
 
     func tableView(_ tableView: NSTableView, draggingSession session: NSDraggingSession,
                    willBeginAt screenPoint: NSPoint, forRowIndexes rowIndexes: IndexSet) {
+        draggedTab = rowIndexes.first.flatMap { $0 < store.tabs.count ? store.tabs[$0] : nil }
+        // A tab dropped outside the window becomes a window there: do not slide it back.
+        session.animatesToStartingPositionsOnCancelOrFail = false
         // Show where to drop to pin, also when nothing is pinned yet.
         pinnedGrid.isShowingDropZone = true
         needsLayout = true
@@ -223,6 +229,12 @@ final class SidebarView: NSView, NSTableViewDataSource, NSTableViewDelegate {
                    endedAt screenPoint: NSPoint, operation: NSDragOperation) {
         pinnedGrid.isShowingDropZone = false
         needsLayout = true
+        let tab = draggedTab
+        draggedTab = nil
+        // Dropped outside every Bosk window: the tab gets its own window.
+        guard operation.isEmpty, let tab, store.tabs.count > 1,
+              !NSApp.windows.contains(where: { $0.isVisible && $0.frame.contains(screenPoint) }) else { return }
+        (NSApp.delegate as? AppDelegate)?.moveToNewWindow(tab, topLeft: screenPoint)
     }
 
     func tableView(_ tableView: NSTableView, validateDrop info: NSDraggingInfo, proposedRow row: Int,
@@ -274,6 +286,12 @@ extension SidebarView: NSMenuDelegate {
         let tab = store.tabs[row]
         menu.addItem(ClosureMenuItem("Pin Tab") { [weak self] in self?.store.pin(tab) })
         menu.addItem(ClosureMenuItem("Copy Address") { tab.copyAddress() })
+        // With one tab, the new window would be the same as this one.
+        let moveToWindow = ClosureMenuItem("Move to Its Own Window") {
+            (NSApp.delegate as? AppDelegate)?.moveToNewWindow(tab)
+        }
+        moveToWindow.isEnabled = store.tabs.count > 1
+        menu.addItem(moveToWindow)
         menu.addItem(.separator())
         menu.addItem(ClosureMenuItem("Close Tab") { [weak self] in self?.store.close(tab) })
         let closeOthers = ClosureMenuItem("Close Other Tabs") { [weak self] in self?.store.closeOtherTabs(than: tab) }

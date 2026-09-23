@@ -11,6 +11,12 @@ final class FaviconStore {
     private let memory = NSCache<NSString, NSImage>()
     private let directory: URL
     private var inFlight: Set<String> = []
+    /// Hosts with no icon file, so the disk is not read again for them.
+    private var missing: Set<String> = []
+    /// When each host's icon was last looked for in this launch.
+    private var lastRefresh: [String: Date] = [:]
+    /// An icon is looked for again after this time. Pages rarely change their icon.
+    private static let refreshInterval: TimeInterval = 24 * 60 * 60
 
     private static let findIconsScript = """
         [...document.querySelectorAll('link[rel~="icon"], link[rel^="apple-touch-icon"]')]
@@ -26,26 +32,44 @@ final class FaviconStore {
     func cachedIcon(for url: URL?) -> NSImage? {
         guard let host = url?.host() else { return nil }
         if let image = memory.object(forKey: host as NSString) { return image }
-        guard let image = NSImage(contentsOf: fileURL(for: host)) else { return nil }
+        guard !missing.contains(host) else { return nil }
+        guard let image = NSImage(contentsOf: fileURL(for: host)) else {
+            missing.insert(host)
+            return nil
+        }
         image.size = NSSize(width: 32, height: 32)
         memory.setObject(image, forKey: host as NSString)
         return image
     }
 
     /// Finds the page's icon after it loads, downloads it, and gives it to the tab.
+    /// Not more than one time a day for each host.
     func refresh(for tab: Tab) {
         guard let webView = tab.webView, let pageURL = webView.url, let host = pageURL.host(),
-              !inFlight.contains(host) else { return }
+              !inFlight.contains(host), !isFresh(host) else { return }
         inFlight.insert(host)
-        Task {
+        lastRefresh[host] = Date()
+        let file = fileURL(for: host)
+        // Weak: a closed or sleeping tab must not keep its web view while the icon downloads.
+        Task { [weak tab, weak webView] in
             defer { inFlight.remove(host) }
+            guard let webView else { return }
             let candidates = await Self.candidates(in: webView)
             guard let iconURL = FaviconPicker.pick(from: candidates, pageURL: pageURL),
-                  let image = await Self.download(iconURL) else { return }
+                  let png = await Self.downloadPNG(iconURL, to: file),
+                  let image = NSImage(data: png) else { return }
+            image.size = NSSize(width: 32, height: 32)
+            missing.remove(host)
             memory.setObject(image, forKey: host as NSString)
-            if let png = image.pngData { try? png.write(to: fileURL(for: host), options: .atomic) }
-            if tab.url?.host() == host { tab.favicon = image }
+            if let tab, tab.url?.host() == host { tab.favicon = image }
         }
+    }
+
+    private func isFresh(_ host: String) -> Bool {
+        let date = lastRefresh[host] ?? (try? fileURL(for: host).resourceValues(forKeys: [.contentModificationDateKey]))?
+            .contentModificationDate
+        guard let date else { return false }
+        return Date().timeIntervalSince(date) < Self.refreshInterval
     }
 
     private static func candidates(in webView: WKWebView) async -> [FaviconPicker.Candidate] {
@@ -57,11 +81,15 @@ final class FaviconStore {
         }
     }
 
-    private static func download(_ url: URL) async -> NSImage? {
+    /// Downloads, resizes and saves the icon off the main thread.
+    /// - Returns: The 64 px PNG data.
+    private nonisolated static func downloadPNG(_ url: URL, to file: URL) async -> Data? {
         guard let (data, response) = try? await URLSession.shared.data(from: url),
               (response as? HTTPURLResponse)?.statusCode ?? 200 < 400,
-              let source = NSImage(data: data), source.isValid else { return nil }
-        return source.resized(toPixels: 64)
+              let source = NSImage(data: data), source.isValid,
+              let png = source.resized(toPixels: 64)?.pngData else { return nil }
+        try? png.write(to: file, options: .atomic)
+        return png
     }
 
     private func fileURL(for host: String) -> URL {

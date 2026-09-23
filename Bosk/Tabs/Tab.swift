@@ -6,7 +6,8 @@ import WebKit
 @MainActor
 final class Tab: NSObject {
     enum Change {
-        case title, url, favicon, themeColor, loading, navigationState, sleepState
+        /// `progress` is only `estimatedProgress`; it changes many times for each load.
+        case title, url, favicon, themeColor, loading, progress, navigationState, sleepState, hoveredLink
     }
 
     let id: UUID
@@ -28,10 +29,18 @@ final class Tab: NSObject {
     /// A small JPEG of the page, taken when the user leaves the tab. It is shown while a
     /// sleeping tab wakes up. JPEG data, not an image, so sleeping tabs stay small in memory.
     private(set) var snapshotData: Data?
-    /// Text typed in a form and not sent yet. Set by a page script; tab sleep checks it.
-    var hasUnsentInput = false
+    /// The frames with text typed in a form and not sent yet. Set by a page script.
+    var framesWithUnsentInput: Set<String> = []
+    /// Tab sleep checks it.
+    var hasUnsentInput: Bool { !framesWithUnsentInput.isEmpty }
+    /// When the page's process last stopped and the page loaded again (last minute only).
+    var crashReloads: [Date] = []
     /// The address of the Bosk error page on screen, so it does not go into history.
     var errorPageURL: URL?
+    /// The link under the mouse, for the status bubble. WebKit sets it on each mouse move.
+    var hoveredLink: URL? {
+        didSet { if hoveredLink != oldValue { notify(.hoveredLink) } }
+    }
 
     /// This tab's zoom when the user changed it with Cmd+= / Cmd+-; nil follows the default.
     var zoomOverride: Double? {
@@ -130,7 +139,10 @@ final class Tab: NSObject {
     func captureSnapshot() {
         guard let webView, webView.window != nil, !webView.bounds.isEmpty else { return }
         let configuration = WKSnapshotConfiguration()
-        configuration.snapshotWidth = NSNumber(value: Double(min(webView.bounds.width, Defaults.snapshotWidth)))
+        // WebKit takes the width in points and makes 2 pixels per point on Retina screens.
+        // The picture shows for about a second, so 1x is enough, at a quarter of the memory.
+        let scale = webView.window?.backingScaleFactor ?? 1
+        configuration.snapshotWidth = NSNumber(value: Double(min(webView.bounds.width, Defaults.snapshotWidth) / scale))
         webView.takeSnapshot(with: configuration) { [weak self] image, _ in
             guard let cgImage = image?.cgImage(forProposedRect: nil, context: nil, hints: nil) else { return }
             Task.detached(priority: .utility) {
@@ -178,7 +190,7 @@ final class Tab: NSObject {
                 MainActor.assumeIsolated { self?.notify(.loading) }
             },
             webView.observe(\.estimatedProgress) { [weak self] _, _ in
-                MainActor.assumeIsolated { self?.notify(.loading) }
+                MainActor.assumeIsolated { self?.notify(.progress) }
             },
             webView.observe(\.canGoBack) { [weak self] _, _ in
                 MainActor.assumeIsolated { self?.notify(.navigationState) }

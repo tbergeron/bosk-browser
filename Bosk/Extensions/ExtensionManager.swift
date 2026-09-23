@@ -45,9 +45,17 @@ final class ExtensionManager: NSObject {
 
     /// Loads the enabled extensions. Call once at launch, after the windows exist.
     func loadInstalledExtensions() async {
-        guard let data = try? Data(contentsOf: registryURL),
-              let saved = try? JSONDecoder().decode([Record].self, from: data) else { return }
-        records = saved
+        guard let data = try? Data(contentsOf: registryURL) else { return }
+        do {
+            records = try JSONDecoder().decode([Record].self, from: data)
+        } catch {
+            // Keep the bad file for inspection instead of writing over it later.
+            let backup = registryURL.deletingPathExtension().appendingPathExtension("broken.json")
+            try? FileManager.default.removeItem(at: backup)
+            try? FileManager.default.moveItem(at: registryURL, to: backup)
+            NSLog("Bosk: extensions file did not load (%@). Moved it to %@.", "\(error)", backup.path)
+            return
+        }
         await unpackOldZipInstalls()
         for record in records where record.enabled {
             do {
@@ -86,7 +94,17 @@ final class ExtensionManager: NSObject {
             try process.run()
             process.waitUntilExit()
             guard process.terminationStatus == 0 else {
+                try? FileManager.default.removeItem(at: folder)
                 throw CocoaError(.fileReadCorruptFile, userInfo: [NSFilePathErrorKey: zip.path])
+            }
+            // A ZIP can hold symbolic links. A link could let the extension read or write files
+            // outside its folder, and extensions do not need links, so refuse the archive.
+            let items = FileManager.default.enumerator(at: folder, includingPropertiesForKeys: [.isSymbolicLinkKey])
+            while let item = items?.nextObject() as? URL {
+                guard try item.resourceValues(forKeys: [.isSymbolicLinkKey]).isSymbolicLink != true else {
+                    try? FileManager.default.removeItem(at: folder)
+                    throw CocoaError(.fileReadCorruptFile, userInfo: [NSFilePathErrorKey: zip.path])
+                }
             }
         }.value
     }
@@ -149,14 +167,9 @@ final class ExtensionManager: NSObject {
         guard (response as? HTTPURLResponse)?.statusCode == 200 else {
             throw ChromeExtensionPackage.Error.notAnExtension
         }
-        let fileName = extensionID
-        if let existing = contexts[extensionID] { try? controller.unload(existing) }
+        // A new folder, so the installed copy stays until the user says yes.
+        let fileName = UUID().uuidString
         try await unpackArchive(data, into: fileName)
-        // The store ID is the record ID, so a second install replaces the first.
-        if let existing = records.firstIndex(where: { $0.id == extensionID }) {
-            unload(records[existing].id)
-            records.remove(at: existing)
-        }
         try await finishInstall(Record(id: extensionID, fileName: fileName, enabled: true), in: window)
     }
 
@@ -179,10 +192,16 @@ final class ExtensionManager: NSObject {
             try? FileManager.default.removeItem(at: directory.appending(path: record.fileName))
             return
         }
+        // The store ID is the record ID, so a second install replaces the first.
+        if let existing = records.firstIndex(where: { $0.id == record.id }) {
+            unload(record.id)
+            try? FileManager.default.removeItem(at: directory.appending(path: records[existing].fileName))
+            records.remove(at: existing)
+        }
         var record = record
         let now = Date.distantFuture
-        record.grantedPermissions = Dictionary(uniqueKeysWithValues: webExtension.requestedPermissions.map { ($0.rawValue, now) })
-        record.grantedMatchPatterns = Dictionary(uniqueKeysWithValues: webExtension.allRequestedMatchPatterns.map { ($0.string, now) })
+        record.grantedPermissions = Self.dictionary(webExtension.requestedPermissions.map { ($0.rawValue, now) })
+        record.grantedMatchPatterns = Self.dictionary(webExtension.allRequestedMatchPatterns.map { ($0.string, now) })
         records.append(record)
         try await load(record)
         saveRegistry()
@@ -217,14 +236,19 @@ final class ExtensionManager: NSObject {
     func saveRegistry() {
         for (index, record) in records.enumerated() {
             guard let context = contexts[record.id] else { continue }
-            records[index].grantedPermissions = Dictionary(uniqueKeysWithValues: context.grantedPermissions.map { ($0.key.rawValue, $0.value) })
-            records[index].deniedPermissions = Dictionary(uniqueKeysWithValues: context.deniedPermissions.map { ($0.key.rawValue, $0.value) })
-            records[index].grantedMatchPatterns = Dictionary(uniqueKeysWithValues: context.grantedPermissionMatchPatterns.map { ($0.key.string, $0.value) })
-            records[index].deniedMatchPatterns = Dictionary(uniqueKeysWithValues: context.deniedPermissionMatchPatterns.map { ($0.key.string, $0.value) })
+            records[index].grantedPermissions = Self.dictionary(context.grantedPermissions.map { ($0.key.rawValue, $0.value) })
+            records[index].deniedPermissions = Self.dictionary(context.deniedPermissions.map { ($0.key.rawValue, $0.value) })
+            records[index].grantedMatchPatterns = Self.dictionary(context.grantedPermissionMatchPatterns.map { ($0.key.string, $0.value) })
+            records[index].deniedMatchPatterns = Self.dictionary(context.deniedPermissionMatchPatterns.map { ($0.key.string, $0.value) })
         }
         if let data = try? JSONEncoder().encode(records) {
             try? data.write(to: registryURL, options: .atomic)
         }
+    }
+
+    /// Two patterns can have the same text; `uniqueKeysWithValues` would stop the app.
+    private static func dictionary(_ pairs: [(String, Date)]) -> [String: Date] {
+        Dictionary(pairs, uniquingKeysWith: { first, _ in first })
     }
 
     private static func permissions(_ saved: [String: Date]) -> [WKWebExtension.Permission: Date] {
@@ -272,8 +296,9 @@ final class ExtensionManager: NSObject {
         if let previous { controller.didDeselectTabs([previous]) }
     }
 
-    func didMove(_ tab: Tab, from index: Int) {
-        controller.didMoveTab(tab, from: index, in: tab.store?.windowController)
+    /// - Parameter oldWindow: The window the tab came from, when it moved to another window.
+    func didMove(_ tab: Tab, from index: Int, in oldWindow: BrowserWindowController? = nil) {
+        controller.didMoveTab(tab, from: index, in: oldWindow ?? tab.store?.windowController)
     }
 
     func didChange(_ properties: WKWebExtension.TabChangedProperties, for tab: Tab) {
@@ -289,12 +314,18 @@ enum PermissionText {
         if patterns.contains(where: { $0.matchesAllHosts || $0.matchesAllURLs }) {
             lines.append("• Read and change data on all websites")
         } else if !patterns.isEmpty {
-            let hosts = patterns.compactMap(\.host).sorted().prefix(5).joined(separator: ", ")
-            lines.append("• Read and change data on: \(hosts)")
+            // A pattern with no host (file:///*) shows as written.
+            lines.append("• Read and change data on: " + list(Set(patterns.map { $0.host ?? $0.string }).sorted()))
         }
         let names = permissions.map(\.rawValue).sorted()
         if !names.isEmpty { lines.append("• Use: " + names.joined(separator: ", ")) }
         return lines.isEmpty ? "It asks for no special access." : "It can:\n" + lines.joined(separator: "\n")
+    }
+
+    /// The first 5 names, and how many more, so the user knows the list is not complete.
+    static func list(_ names: [String]) -> String {
+        let shown = names.prefix(5).joined(separator: ", ")
+        return names.count > 5 ? shown + ", and \(names.count - 5) more" : shown
     }
 }
 

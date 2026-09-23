@@ -7,6 +7,9 @@ import WebKit
 final class WebContainerView: NSView {
     private(set) var webView: WKWebView?
     private let snapshotView = NSImageView()
+    /// The link under the mouse, at the bottom left, like Safari's status bar.
+    private let statusBox = NSBox()
+    private let statusLabel = NSTextField(labelWithString: "")
 
     override init(frame: NSRect) {
         super.init(frame: frame)
@@ -14,6 +17,17 @@ final class WebContainerView: NSView {
         layer?.backgroundColor = NSColor.windowBackgroundColor.cgColor
         snapshotView.imageScaling = .scaleAxesIndependently
         snapshotView.autoresizingMask = [.width, .height]
+        statusLabel.font = .systemFont(ofSize: NSFont.smallSystemFontSize)
+        statusLabel.textColor = .secondaryLabelColor
+        statusLabel.lineBreakMode = .byTruncatingMiddle
+        statusBox.boxType = .custom
+        statusBox.fillColor = .windowBackgroundColor
+        statusBox.borderColor = .separatorColor
+        statusBox.cornerRadius = 5
+        statusBox.contentViewMargins = NSSize(width: 6, height: 2)
+        statusBox.contentView = statusLabel
+        statusBox.isHidden = true
+        addSubview(statusBox)
     }
 
     @available(*, unavailable)
@@ -40,6 +54,28 @@ final class WebContainerView: NSView {
     func hideSnapshot() {
         snapshotView.removeFromSuperview()
         snapshotView.image = nil
+    }
+
+    /// - Parameter text: nil hides the bubble.
+    func showStatus(_ text: String?) {
+        statusLabel.stringValue = text ?? ""
+        statusBox.isHidden = text == nil
+        needsLayout = true
+    }
+
+    override func layout() {
+        super.layout()
+        let size = statusLabel.intrinsicContentSize
+        let margins = statusBox.contentViewMargins
+        // Not flipped: y = 0 is the bottom. Inset from the card's round corner.
+        statusBox.frame = NSRect(x: 4, y: 4, width: min(size.width + margins.width * 2 + 2, bounds.width * 0.6),
+                                 height: size.height + margins.height * 2 + 2)
+    }
+
+    /// The status bubble takes no clicks: they go to the page under it.
+    override func hitTest(_ point: NSPoint) -> NSView? {
+        let view = super.hitTest(point)
+        return view?.isDescendant(of: statusBox) == true ? webView : view
     }
 
     override var wantsUpdateLayer: Bool { true }

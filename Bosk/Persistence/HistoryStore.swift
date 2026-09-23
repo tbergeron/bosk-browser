@@ -23,6 +23,10 @@ actor HistoryStore {
             return
         }
         Self.exec(db, "PRAGMA journal_mode = WAL")
+        // Safe with WAL, and one fsync less for each visit.
+        Self.exec(db, "PRAGMA synchronous = NORMAL")
+        // Deleted history is written over with zeros, so it cannot be read back from the file.
+        Self.exec(db, "PRAGMA secure_delete = ON")
         Self.exec(db, """
             CREATE TABLE IF NOT EXISTS history (
                 url TEXT PRIMARY KEY,
@@ -31,6 +35,8 @@ actor HistoryStore {
                 last_visit REAL NOT NULL
             )
             """)
+        // Searches read the newest pages first and stop at 200 matches.
+        Self.exec(db, "CREATE INDEX IF NOT EXISTS history_last_visit ON history (last_visit)")
         recordStatement = Self.prepare(db, """
             INSERT INTO history (url, title, visit_count, last_visit) VALUES (?1, ?2, 1, ?3)
             ON CONFLICT(url) DO UPDATE SET
@@ -38,7 +44,7 @@ actor HistoryStore {
                 visit_count = visit_count + 1,
                 last_visit = excluded.last_visit
             """)
-        titleStatement = Self.prepare(db, "UPDATE history SET title = ?2 WHERE url = ?1")
+        titleStatement = Self.prepare(db, "UPDATE history SET title = ?2 WHERE url = ?1 AND title != ?2")
         removeStatement = Self.prepare(db, "DELETE FROM history WHERE url = ?1")
         searchStatement = Self.prepare(db, """
             SELECT url, title, visit_count, last_visit FROM history
@@ -50,6 +56,8 @@ actor HistoryStore {
     /// Deletes all history (Settings > Privacy).
     func clear() {
         Self.exec(db, "DELETE FROM history")
+        // The WAL file also keeps old pages until a checkpoint.
+        Self.exec(db, "PRAGMA wal_checkpoint(TRUNCATE)")
     }
 
     /// Removes one page (right-click in the History list).

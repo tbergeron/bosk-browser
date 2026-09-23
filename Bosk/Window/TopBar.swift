@@ -68,7 +68,11 @@ final class TopBar: NSView {
         reloadButton.action = loading ? #selector(BrowserWindowController.browserStop(_:))
                                       : #selector(BrowserWindowController.browserReload(_:))
         addressField.attributedStringValue = Self.addressText(for: tab)
-        updateProgress(loading: loading, progress: tab?.estimatedProgress ?? 0)
+        updateProgress(with: tab)
+    }
+
+    func updateProgress(with tab: Tab?) {
+        updateProgress(loading: tab?.isLoading ?? false, progress: tab?.estimatedProgress ?? 0)
     }
 
     /// "host / Page title": the host is strong, the title is dim.

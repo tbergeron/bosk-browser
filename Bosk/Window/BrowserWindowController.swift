@@ -28,6 +28,8 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate {
         )
         window.titleVisibility = .hidden
         window.titlebarAppearsTransparent = true
+        // Until a tab is on screen. See tabStore(_:didSelect:previous:).
+        window.title = "New Tab"
         window.minSize = Defaults.minimumWindowSize
         window.isReleasedWhenClosed = false
         window.contentView = rootView
@@ -178,8 +180,8 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate {
 
     // MARK: Extensions
 
-    func extensionActionsChanged() {
-        extensionActions.reload()
+    func extensionActionsChanged(for context: WKWebExtensionContext) {
+        extensionActions.reload(context)
     }
 
     func presentPopup(for action: WKWebExtension.Action, of context: WKWebExtensionContext) {
@@ -331,11 +333,14 @@ extension BrowserWindowController: TabStoreDelegate {
         switch change {
         case .title, .favicon, .themeColor, .sleepState, .url:
             sidebar.update(tab)
-        case .loading, .navigationState:
+        case .loading, .progress, .navigationState, .hoveredLink:
             break
         }
         guard tab === store.selectedTab else { return }
+        if change == .progress { return topBar.updateProgress(with: tab) }
+        if change == .hoveredLink { return container.showStatus(tab.hoveredLink?.absoluteString) }
         if change == .url { addToBoskButton.update(for: tab.url) }
+        if change == .title || change == .url { window?.title = tab.displayTitle }
         if change == .sleepState { container.show(tab.webView) }
         // Keep the page picture until the woken page has loaded.
         if change == .loading, !tab.isLoading { container.hideSnapshot() }
@@ -345,6 +350,9 @@ extension BrowserWindowController: TabStoreDelegate {
     func tabStore(_ store: TabStore, didSelect tab: Tab?, previous: Tab?) {
         performanceSignposter.emitEvent("Tab switch")
         container.show(tab?.webView)
+        // Clear the old tab's link, so the same link shows again when the user comes back.
+        previous?.hoveredLink = nil
+        container.showStatus(nil)
         addToBoskButton.update(for: tab?.url)
         extensionActions.reload()
         if rootView.isFindBarVisible { hideFindBar() }
@@ -354,6 +362,8 @@ extension BrowserWindowController: TabStoreDelegate {
             container.hideSnapshot()
         }
         topBar.update(with: tab)
+        // The title is hidden, but the Window menu lists a window only when it has a title.
+        window?.title = tab?.displayTitle ?? "New Tab"
         sidebar.selectionChanged(from: previous, to: tab)
         if tab == nil { showCommandBar(target: .newTab) }
     }
@@ -422,6 +432,12 @@ private final class RootView: NSView {
 
     private var sidebarWidth: CGFloat { isSidebarFolded ? Defaults.stripWidth : openWidth }
 
+    /// Folded, the strip starts under the top bar: the top bar goes under the window buttons.
+    private var sidebarFrame: NSRect {
+        let top = isSidebarFolded ? Defaults.topBarHeight : 0
+        return NSRect(x: 0, y: top, width: sidebarWidth, height: max(0, bounds.height - top))
+    }
+
     /// `x` is the mouse position in this view. Narrow enough, the sidebar folds into the strip.
     private func dragSidebarEdge(to x: CGFloat) {
         guard !isAnimating else { return }
@@ -446,7 +462,7 @@ private final class RootView: NSView {
             return
         }
         isAnimating = true
-        let target = NSRect(x: 0, y: 0, width: sidebarWidth, height: bounds.height)
+        let target = sidebarFrame
         // Do the expensive work (new row layout, and for a fold the page resize, which
         // WebKit blocks until the page draws) in this frame. Start the animation in the next
         // frame, so no animation frame waits for that work.
@@ -475,26 +491,36 @@ private final class RootView: NSView {
     override func layout() {
         super.layout()
         guard !isAnimating else { return }
-        sidebar.frame = NSRect(x: 0, y: 0, width: sidebarWidth, height: bounds.height)
-        resizeHandle.frame = NSRect(x: sidebarWidth - 4, y: 0, width: 8, height: bounds.height)
+        sidebar.frame = sidebarFrame
+        resizeHandle.frame = NSRect(x: sidebarWidth - 4, y: sidebarFrame.minY, width: 8, height: sidebarFrame.height)
         layoutCard(sidebarWidth: sidebarWidth)
     }
 
+    /// Open: a rounded card next to the sidebar. Folded: the card fills the window, so the
+    /// top bar goes under the window buttons, and the strip covers the card's left side
+    /// under the top bar.
     private func layoutCard(sidebarWidth: CGFloat) {
         let inset = Defaults.contentInset
-        card.frame = NSRect(x: sidebarWidth, y: inset,
-                            width: max(0, bounds.width - sidebarWidth - inset),
-                            height: max(0, bounds.height - inset * 2))
+        card.frame = isSidebarFolded
+            ? bounds
+            : NSRect(x: sidebarWidth, y: inset,
+                     width: max(0, bounds.width - sidebarWidth - inset),
+                     height: max(0, bounds.height - inset * 2))
+        card.layer?.cornerRadius = isSidebarFolded ? 0 : Defaults.contentCornerRadius
         let barHeight = Defaults.topBarHeight
         // The window buttons can go past the strip: Back starts after them.
-        let buttonsMaxX = window?.standardWindowButton(.zoomButton)?.frame.maxX ?? 0
-        topBar.leadingInset = max(0, buttonsMaxX + 6 - sidebarWidth)
+        // In full screen they are hidden.
+        let isFullScreen = window?.styleMask.contains(.fullScreen) ?? false
+        let buttonsMaxX = isFullScreen ? 0 : window?.standardWindowButton(.zoomButton)?.frame.maxX ?? 0
+        topBar.leadingInset = max(0, buttonsMaxX + 6 - card.frame.minX)
         let size = card.bounds.size
         // The card is not flipped: y = 0 is the bottom.
         topBar.frame = NSRect(x: 0, y: size.height - barHeight, width: size.width, height: barHeight)
+        let contentX = isSidebarFolded ? sidebarWidth : 0
+        let contentWidth = max(0, size.width - contentX)
         let findHeight: CGFloat = isFindBarVisible ? 36 : 0
-        findBar.frame = NSRect(x: 0, y: size.height - barHeight - findHeight, width: size.width, height: findHeight)
-        container.frame = NSRect(x: 0, y: 0, width: size.width, height: size.height - barHeight - findHeight)
+        findBar.frame = NSRect(x: contentX, y: size.height - barHeight - findHeight, width: contentWidth, height: findHeight)
+        container.frame = NSRect(x: contentX, y: 0, width: contentWidth, height: size.height - barHeight - findHeight)
     }
 }
 

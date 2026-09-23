@@ -20,7 +20,10 @@ public enum FaviconPicker {
     /// - Returns: The best declared icon, or `/favicon.ico` at the page's origin when
     ///   the page declares none. Nil only when the page URL has no host.
     public static func pick(from candidates: [Candidate], pageURL: URL) -> URL? {
-        let usable = candidates.filter { !$0.url.pathExtension.lowercased().hasPrefix("svg") }
+        // Only web icons: a page must not make Bosk read file:// or other local URLs.
+        let usable = candidates.filter {
+            ["http", "https"].contains($0.url.scheme?.lowercased()) && !$0.url.pathExtension.lowercased().hasPrefix("svg")
+        }
         if let best = usable.max(by: { score($0) < score($1) }) { return best.url }
         guard let host = pageURL.host(), let scheme = pageURL.scheme else { return nil }
         var components = URLComponents()
@@ -41,9 +44,12 @@ public enum FaviconPicker {
         return size * 10
     }
 
+    /// The page writes `sizes`, so values outside 1...4096 are ignored. Without this limit,
+    /// a negative size overflows in `score` and stops the app.
     static func largestSize(_ sizes: String) -> Int? {
         sizes.lowercased().split(separator: " ")
             .compactMap { $0.split(separator: "x").first.flatMap { Int($0) } }
+            .filter { (1...4096).contains($0) }
             .max()
     }
 }

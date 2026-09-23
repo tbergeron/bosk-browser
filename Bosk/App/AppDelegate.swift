@@ -87,14 +87,30 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
     }
 
     @discardableResult
-    func openWindow(showCommandBar: Bool = true) -> BrowserWindowController {
+    func openWindow(showCommandBar: Bool = true, frame: NSRect? = nil) -> BrowserWindowController {
         let controller = BrowserWindowController()
+        if let frame { controller.window?.setFrame(frame, display: false) }
         windowControllers.append(controller)
         ExtensionManager.shared.controller.didOpenWindow(controller)
         controller.showWindow(nil)
         NSApp.activate()
         if showCommandBar { controller.showCommandBar(target: .newTab) }
         return controller
+    }
+
+    /// Moves a normal tab, with its page, to a new window of the same size.
+    /// - Parameter topLeft: The new window's top-left corner (where a tab drag ended);
+    ///   nil puts the window down and to the right of the tab's window.
+    func moveToNewWindow(_ tab: Tab, topLeft: NSPoint? = nil) {
+        guard let store = tab.store, let oldFrame = store.window?.frame else { return }
+        var frame = oldFrame
+        if let topLeft {
+            frame.origin = NSPoint(x: topLeft.x, y: topLeft.y - frame.height)
+        } else {
+            frame = frame.offsetBy(dx: 24, dy: -24)
+        }
+        let controller = openWindow(showCommandBar: false, frame: frame)
+        store.transfer(tab, to: controller.store)
     }
 
     func windowControllerDidClose(_ controller: BrowserWindowController) {
@@ -107,6 +123,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
     private var isTerminating = false
 
     func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
+        // Quit stops running downloads and leaves partial files, so ask first.
+        if DownloadManager.shared.hasRunningDownloads {
+            let alert = NSAlert()
+            alert.messageText = "Quit and stop downloads?"
+            alert.informativeText = "Downloads that are not complete will stop."
+            alert.addButton(withTitle: "Quit").hasDestructiveAction = true
+            alert.addButton(withTitle: "Cancel")
+            guard alert.runModal() == .alertFirstButtonReturn else { return .terminateCancel }
+        }
         isTerminating = true
         return .terminateNow
     }

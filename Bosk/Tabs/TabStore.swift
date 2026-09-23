@@ -148,7 +148,11 @@ final class TabStore {
     /// so no tab that is about to close is selected (and woken) on the way.
     func closeOtherTabs(than tab: Tab) {
         select(tab)
+        // One sidebar reload for all the tabs, not one for each tab.
+        isClosingManyTabs = true
         for other in tabs where other !== tab { close(other) }
+        isClosingManyTabs = false
+        structureChanged()
     }
 
     private func selectAfterClosing(_ closed: Tab, at index: Int) {
@@ -183,6 +187,23 @@ final class TabStore {
         tabs.insert(tab, at: min(index, tabs.count))
         structureChanged()
         ExtensionManager.shared.didMove(tab, from: pinnedTabs.count + from)
+    }
+
+    /// Moves a normal tab to the end of `other`'s list and selects it there. The tab keeps
+    /// its web view, so the page does not reload.
+    func transfer(_ tab: Tab, to other: TabStore) {
+        guard other !== self, let index = tabs.firstIndex(where: { $0 === tab }) else { return }
+        let oldWindow = windowController
+        let allIndex = pinnedTabs.count + index
+        tabs.remove(at: index)
+        structureChanged()
+        // This window shows another tab first, so its container lets go of the web view.
+        if tab === selectedTab { selectAfterClosing(tab, at: allIndex) }
+        tab.store = other
+        other.tabs.append(tab)
+        other.structureChanged()
+        ExtensionManager.shared.didMove(tab, from: allIndex, in: oldWindow)
+        other.select(tab)
     }
 
     // MARK: Pinning
@@ -248,10 +269,15 @@ final class TabStore {
         case .loading: ExtensionManager.shared.didChange(.loading, for: tab)
         default: break
         }
-        if change == .url || change == .title { SessionStore.shared.setNeedsSave() }
+        // Not on title changes: some pages change their title each second ("(3) Inbox").
+        // The title is saved with the next save, and at quit.
+        if change == .url { SessionStore.shared.setNeedsSave() }
     }
 
+    private var isClosingManyTabs = false
+
     private func structureChanged() {
+        guard !isClosingManyTabs else { return }
         delegate?.tabStoreDidChangeTabs(self)
         SessionStore.shared.setNeedsSave()
     }

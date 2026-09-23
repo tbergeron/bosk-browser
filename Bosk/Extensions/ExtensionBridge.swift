@@ -63,7 +63,7 @@ extension ExtensionManager: WKWebExtensionControllerDelegate {
                                 promptForPermissionToAccess urls: Set<URL>,
                                 in tab: (any WKWebExtensionTab)?, for extensionContext: WKWebExtensionContext,
                                 completionHandler: @escaping (Set<URL>, Date?) -> Void) {
-        let hosts = urls.compactMap { $0.host() }.sorted().prefix(5).joined(separator: ", ")
+        let hosts = PermissionText.list(Set(urls.map { $0.host() ?? $0.absoluteString }).sorted())
         ask(extensionContext, "It can:\n• Read and change data on: \(hosts)") { allowed in
             completionHandler(allowed ? urls : [], nil)
         }
@@ -93,7 +93,8 @@ extension ExtensionManager: WKWebExtensionControllerDelegate {
 
     func webExtensionController(_ controller: WKWebExtensionController, didUpdate action: WKWebExtension.Action,
                                 forExtensionContext context: WKWebExtensionContext) {
-        focusedWindowController?.extensionActionsChanged()
+        // Each window shows the badge for its own tab.
+        windowsProvider?().forEach { $0.extensionActionsChanged(for: context) }
     }
 
     func webExtensionController(_ controller: WKWebExtensionController, presentActionPopup action: WKWebExtension.Action,

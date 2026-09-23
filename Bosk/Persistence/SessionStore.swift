@@ -11,6 +11,9 @@ final class SessionStore {
 
     private let fileURL: URL
     private var pendingSave: Task<Void, Never>?
+    /// Encodes and writes in order, off the main thread. The write at quit waits for an
+    /// earlier write, so an older session cannot replace it.
+    private let writeQueue = DispatchQueue(label: "Bosk.SessionStore", qos: .utility)
 
     private init() {
         let directory = Defaults.dataDirectory
@@ -39,21 +42,23 @@ final class SessionStore {
             try? await Task.sleep(for: Defaults.sessionSaveDelay)
             guard let self, !Task.isCancelled else { return }
             self.pendingSave = nil
-            guard let data = self.encodedSnapshot() else { return }
+            guard let session = self.snapshotProvider?() else { return }
             let url = self.fileURL
-            await Task.detached(priority: .utility) { try? data.write(to: url, options: .atomic) }.value
+            self.writeQueue.async { Self.write(session, to: url) }
         }
     }
 
-    /// Writes now, on this thread. Use it when the app quits.
+    /// Writes now, and waits. Use it when the app quits.
     func saveNow() {
         pendingSave?.cancel()
         pendingSave = nil
-        if let data = encodedSnapshot() { try? data.write(to: fileURL, options: .atomic) }
+        guard let session = snapshotProvider?() else { return }
+        let url = fileURL
+        writeQueue.sync { Self.write(session, to: url) }
     }
 
-    private func encodedSnapshot() -> Data? {
-        guard let session = snapshotProvider?() else { return nil }
-        return try? session.encoded()
+    private nonisolated static func write(_ session: Session, to url: URL) {
+        guard let data = try? session.encoded() else { return }
+        try? data.write(to: url, options: .atomic)
     }
 }

@@ -28,6 +28,8 @@ final class CommandBarPanel: NSPanel, NSTextFieldDelegate, NSTableViewDataSource
     private var onRemove: ((Suggestion) async -> Void)?
     private var provider: ((String) async -> [Row])?
     private var rows: [Row] = []
+    /// The text that `rows` were made for. Rows arrive later than the keystrokes.
+    private var rowsQuery = ""
     private var queryTask: Task<Void, Never>?
 
     private let fieldHeight: CGFloat = 56
@@ -104,6 +106,7 @@ final class CommandBarPanel: NSPanel, NSTextFieldDelegate, NSTableViewDataSource
         case .commands: "Search commands"
         }
         rows = []
+        rowsQuery = ""
         tableView.reloadData()
 
         let frame = window.frame
@@ -139,16 +142,19 @@ final class CommandBarPanel: NSPanel, NSTextFieldDelegate, NSTableViewDataSource
     // MARK: Suggestions
 
     func controlTextDidChange(_ notification: Notification) {
-        runQuery(field.stringValue)
+        runQuery(field.stringValue, debounce: true)
     }
 
-    private func runQuery(_ text: String) {
+    /// - Parameter debounce: Waits a short time first, so fast typing runs one history search.
+    private func runQuery(_ text: String, debounce: Bool = false) {
         queryTask?.cancel()
         queryTask = Task { [weak self] in
-            guard let provider = self?.provider else { return }
+            if debounce { try? await Task.sleep(for: .milliseconds(50)) }
+            guard !Task.isCancelled, let provider = self?.provider else { return }
             let rows = await provider(text)
             guard !Task.isCancelled, let self else { return }
             self.rows = rows
+            self.rowsQuery = text
             self.tableView.reloadData()
             if let first = rows.firstIndex(where: Self.isSelectable) {
                 self.tableView.selectRowIndexes([first], byExtendingSelection: false)
@@ -274,10 +280,11 @@ final class CommandBarPanel: NSPanel, NSTextFieldDelegate, NSTableViewDataSource
 
     @objc private func submit() {
         let text = field.stringValue
-        if let choice = suggestion(at: tableView.selectedRow) {
+        // Rows can be one keystroke old. In the open mode, the first row is then the old typed
+        // text, so go to the text in the field.
+        if mode != .open || rowsQuery == text, let choice = suggestion(at: tableView.selectedRow) {
             choose(choice)
         } else if mode == .open {
-            // Rows can be one keystroke old; with no rows, go to the typed text directly.
             choose(InputClassifier.url(for: text, searchURL: Defaults.searchURL).map(Suggestion.typed))
         }
     }
