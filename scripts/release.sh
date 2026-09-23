@@ -25,6 +25,17 @@ derived="$root/build/release"
 build_number=$(git -C "$root" rev-list --count HEAD 2>/dev/null || echo 1)
 mkdir -p "$out"
 
+# notarytool exits 0 even when Apple refuses the file, so check the status and show why.
+notarize() {
+  local result id
+  result=$(xcrun notarytool submit "$1" --keychain-profile "$NOTARY_PROFILE" --wait | tee /dev/stderr)
+  grep -q "status: Accepted" <<< "$result" && return
+  id=$(sed -nE 's/^ *id: (.*)/\1/p' <<< "$result" | head -1)
+  xcrun notarytool log "$id" --keychain-profile "$NOTARY_PROFILE" >&2
+  echo "Notarization refused $1. The reasons are above." >&2
+  exit 1
+}
+
 # Check everything for publishing before the long build, so a problem shows at once.
 if $publish; then
   echo "== Check that the release can be published"
@@ -48,19 +59,33 @@ xcodegen generate --quiet
 xcodebuild -scheme Bosk -configuration Release -derivedDataPath "$derived" -destination 'platform=macOS' \
   MARKETING_VERSION="$version" CURRENT_PROJECT_VERSION="$build_number" \
   CODE_SIGN_IDENTITY="$DEVELOPER_ID" OTHER_CODE_SIGN_FLAGS="--timestamp" \
+  CODE_SIGN_INJECT_BASE_ENTITLEMENTS=NO \
   SPARKLE_FEED_URL="$SPARKLE_FEED_URL" SPARKLE_PUBLIC_KEY="$SPARKLE_PUBLIC_KEY" \
   clean build | grep -E "error:|warning: |BUILD" || true
 app="$derived/Build/Products/Release/Bosk.app"
 [[ -d "$app" ]] || { echo "Build failed." >&2; exit 1; }
 
+# Xcode signs only the top of Sparkle.framework; its helpers stay ad-hoc signed and
+# notarization refuses them. Sign them from the inside out, then the framework and the app.
+echo "== Sign Sparkle"
+sparkle="$app/Contents/Frameworks/Sparkle.framework"
+for item in Versions/B/XPCServices/Installer.xpc Versions/B/XPCServices/Downloader.xpc \
+            Versions/B/Autoupdate Versions/B/Updater.app .; do
+  codesign -f -s "$DEVELOPER_ID" -o runtime --timestamp --preserve-metadata=entitlements "$sparkle/$item"
+done
+codesign -f -s "$DEVELOPER_ID" -o runtime --timestamp \
+  --entitlements "$root/Bosk/Resources/Bosk.entitlements" "$app"
+
 echo "== Check the signature"
 codesign --verify --deep --strict --verbose=2 "$app"
 codesign -dv "$app" 2>&1 | grep -E "Authority=Developer ID Application|flags=.*runtime" \
   || { echo "The app is not signed with Developer ID and the hardened runtime." >&2; exit 1; }
+! codesign -d --entitlements - "$app" 2>&1 | grep -q get-task-allow \
+  || { echo "The app has the get-task-allow entitlement; notarization refuses it." >&2; exit 1; }
 
 echo "== Notarize the app"
 ditto -c -k --keepParent "$app" "$out/Bosk-notarize.zip"
-xcrun notarytool submit "$out/Bosk-notarize.zip" --keychain-profile "$NOTARY_PROFILE" --wait
+notarize "$out/Bosk-notarize.zip"
 xcrun stapler staple "$app"
 rm "$out/Bosk-notarize.zip"
 
@@ -72,7 +97,7 @@ ln -s /Applications "$staging/Applications"
 hdiutil create -volname "Bosk" -srcfolder "$staging" -ov -format UDZO "$dmg"
 rm -rf "$staging"
 codesign --sign "$DEVELOPER_ID" --timestamp "$dmg"
-xcrun notarytool submit "$dmg" --keychain-profile "$NOTARY_PROFILE" --wait
+notarize "$dmg"
 xcrun stapler staple "$dmg"
 
 echo "== Update the appcast"
