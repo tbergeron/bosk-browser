@@ -2,7 +2,7 @@
 
 A small, fast, opinionated web browser for macOS. Built on WebKit.
 
-**Private by design.** No account. No analytics. No telemetry. No bloat. Just pure raw speed.
+**Private by design.** No telemetry. No bloat. Just pure raw speed.
 
 - Tabs in a sidebar, pinned tabs as a grid, a sidebar that folds into a strip.
 - Tabs sleep after 30 minutes idle to keep memory low. Pinned tabs stay awake. Settings can turn sleep off.
@@ -12,13 +12,8 @@ Requires macOS 26 or later.
 
 ## Privacy
 
-Bosk has no servers and no accounts, and it collects nothing about you. Your history, tabs and
-settings stay on your Mac. Bosk itself connects only to:
-
-- the sites you open, and their icons (favicons);
-- your search engine (Google by default), when you search from the command bar;
-- the Chrome Web Store, when you add an extension;
-- GitHub, to check for Bosk updates (Sparkle, with no system profile sent).
+Bosk has no backend and no account is needed. It collects nothing about you. Your history, tabs and
+settings stay on your Mac.
 
 ## Build
 
