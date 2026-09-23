@@ -1,4 +1,5 @@
 import AppKit
+import BoskCore
 import WebKit
 
 /// One tab. When `webView` is nil the tab is asleep: it keeps its URL, title,
@@ -165,14 +166,15 @@ final class Tab: NSObject {
                     guard let self, let title = webView.title, !title.isEmpty else { return }
                     self.title = title
                     self.notify(.title)
-                    if let url = webView.url, url != self.errorPageURL {
+                    if let url = webView.url, url != self.errorPageURL, ReaderPage.parse(url) == nil {
                         Task { await HistoryStore.shared.updateTitle(url: url, title: title) }
                     }
                 }
             },
             webView.observe(\.url) { [weak self] webView, _ in
                 MainActor.assumeIsolated {
-                    guard let self, let url = webView.url else { return }
+                    // A reader page shows as its original page (address bar, bookmarks, session).
+                    guard let self, let url = webView.url.map(ReaderPage.pageURL) else { return }
                     if url.host() != self.url?.host() {
                         self.favicon = FaviconStore.shared.cachedIcon(for: url)
                     }

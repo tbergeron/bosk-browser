@@ -1,4 +1,5 @@
 import AppKit
+import BoskCore
 import WebKit
 
 // WebKit delegates for a tab: navigation policy, downloads, sign-in prompts, errors,
@@ -16,6 +17,8 @@ extension Tab: WKNavigationDelegate {
             store?.insert(tab, after: self, select: navigationAction.modifierFlags.contains(.shift))
             return (.cancel, preferences)
         }
+        // Reader pages show HTML from the web page: none of its script may run.
+        if navigationAction.request.url?.scheme == ReaderPage.scheme { preferences.allowsContentJavaScript = false }
         return (.allow, preferences)
     }
 
@@ -53,6 +56,8 @@ extension Tab: WKNavigationDelegate {
             errorPageURL = nil
             return
         }
+        // A reader page keeps its original page's icon, and history has the original page.
+        if let url = webView.url, ReaderPage.parse(url) != nil { return }
         FaviconStore.shared.refresh(for: self)
         if let url = webView.url {
             let title = webView.title ?? title

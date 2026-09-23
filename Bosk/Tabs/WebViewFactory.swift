@@ -1,3 +1,4 @@
+import BoskCore
 import WebKit
 
 /// Makes every web view in Bosk. All tabs share one data store, one user content
@@ -14,7 +15,7 @@ enum WebViewFactory {
     }()
 
     static let unsentInputMessage = "boskUnsentInput"
-    private static let scriptWorld = WKContentWorld.world(name: "Bosk")
+    static let scriptWorld = WKContentWorld.world(name: "Bosk")
 
     /// Tells Bosk, for each frame, when the user types in a form (dirty: true) and when that
     /// text is gone (dirty: false). Tab sleep does not sleep a tab with unsent text, because
@@ -64,6 +65,7 @@ enum WebViewFactory {
         configuration.websiteDataStore = .default()
         configuration.userContentController = userContentController
         configuration.applicationNameForUserAgent = Defaults.userAgentApplicationName
+        configuration.setURLSchemeHandler(ReaderMode.schemeHandler, forURLScheme: ReaderPage.scheme)
         configuration.preferences.isElementFullscreenEnabled = true
         // Content scripts of extensions run only in web views with this controller.
         configuration.webExtensionController = ExtensionManager.shared.controller

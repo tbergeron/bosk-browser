@@ -306,9 +306,18 @@ private struct AboutPane: View {
         ("Show history", "⌘Y"),
         ("Bookmark page, show bookmarks", "⇧⌘B  ⌥⌘B"),
         ("Fold the sidebar", "⌘S"),
+        ("Show or hide reader", "⇧⌘R"),
         ("Find in page", "⌘F"),
         ("Back and forward", "⌘[  ⌘]"),
         ("Zoom in, out, actual size", "⌘+  ⌘−  ⌘0"),
+    ]
+
+    /// The libraries in Bosk (project.yml and Resources/Reader), with their links.
+    private let libraries: [(name: String, use: String, links: [(String, String)])] = [
+        ("Defuddle", "Reader mode · by Steph Ango · MIT License",
+         [("Website", "https://stephango.com"), ("GitHub", "https://github.com/kepano/defuddle")]),
+        ("Sparkle", "App updates · MIT License",
+         [("Website", "https://sparkle-project.org"), ("GitHub", "https://github.com/sparkle-project/Sparkle")]),
     ]
 
     var body: some View {
@@ -334,6 +343,18 @@ private struct AboutPane: View {
             ForEach(shortcuts, id: \.0) { name, keys in
                 SettingsRow(title: name) {
                     Text(keys).foregroundStyle(.secondary).monospacedDigit()
+                }
+            }
+        }
+
+        SettingsCard {
+            ForEach(libraries, id: \.name) { library in
+                SettingsRow(title: library.name, subtitle: library.use) {
+                    HStack(spacing: 6) {
+                        ForEach(library.links, id: \.0) { title, link in
+                            Button(title) { model.open(URL(string: link)!) }.pillButton()
+                        }
+                    }
                 }
             }
         }

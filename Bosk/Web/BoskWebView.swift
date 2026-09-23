@@ -1,7 +1,8 @@
 import AppKit
 import WebKit
 
-/// WKWebView with Bosk's context menu: "New Window" items open tabs.
+/// WKWebView with Bosk's context menu: "New Window" items open tabs, and the page menu
+/// has Show Reader.
 final class BoskWebView: WKWebView {
     override func willOpenMenu(_ menu: NSMenu, with event: NSEvent) {
         super.willOpenMenu(menu, with: event)
@@ -14,6 +15,12 @@ final class BoskWebView: WKWebView {
             case "WKMenuItemIdentifierOpenFrameInNewWindow": item.title = "Open Frame in New Tab"
             default: break
             }
+        }
+        // Show Reader goes in the page's own menu (it has Reload), not in link or image menus.
+        if let tab = WebViewFactory.tab(for: self),
+           let reload = menu.items.firstIndex(where: { $0.identifier?.rawValue == "WKMenuItemIdentifierReload" }),
+           let reader = ReaderMode.menuItem(for: tab) {
+            menu.insertItem(reader, at: reload + 1)
         }
         if let tab = WebViewFactory.tab(for: self) {
             let extensionItems = ExtensionManager.shared.loadedContexts.flatMap { $0.menuItems(for: tab) }

@@ -36,6 +36,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
         }
         TabSleepManager.shared.storesProvider = { [weak self] in self?.windowControllers.map(\.store) ?? [] }
         TabSleepManager.shared.start()
+        Task.detached(priority: .background) { ReaderMode.deleteOldArticles() }
         #if DEBUG
         if let controller = windowControllers.first {
             PerfHarness.runIfRequested(controller)

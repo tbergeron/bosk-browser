@@ -37,6 +37,8 @@ enum Defaults {
     static let snapshotWidth: CGFloat = 900
     /// Reloads of the selected tab after its page process stops, in one minute.
     static let crashReloadLimit = 3
+    /// Saved reader articles older than this are deleted at launch.
+    static let readerArticleLifetime: TimeInterval = 30 * 24 * 60 * 60
 
     static let topBarHeight: CGFloat = 44
     /// The open sidebar's width until the user drags its edge (see Preferences.sidebarWidth).

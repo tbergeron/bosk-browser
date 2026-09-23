@@ -145,6 +145,7 @@ extension TopBar: NSMenuDelegate {
                 NSApp.sendAction(#selector(BrowserWindowController.bookmarkPage(_:)), to: nil, from: nil)
             })
         }
+        if let tab, let reader = ReaderMode.menuItem(for: tab) { menu.addItem(reader) }
         let picker = NSSharingServicePicker(items: [url])
         sharePicker = picker
         menu.addItem(picker.standardShareMenuItem)

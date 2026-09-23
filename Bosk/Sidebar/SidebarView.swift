@@ -286,6 +286,7 @@ extension SidebarView: NSMenuDelegate {
         let tab = store.tabs[row]
         menu.addItem(ClosureMenuItem("Pin Tab") { [weak self] in self?.store.pin(tab) })
         menu.addItem(ClosureMenuItem("Copy Address") { tab.copyAddress() })
+        if let reader = ReaderMode.menuItem(for: tab) { menu.addItem(reader) }
         // With one tab, the new window would be the same as this one.
         let moveToWindow = ClosureMenuItem("Move to Its Own Window") {
             (NSApp.delegate as? AppDelegate)?.moveToNewWindow(tab)

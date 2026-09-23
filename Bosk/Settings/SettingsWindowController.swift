@@ -263,7 +263,7 @@ final class SettingsModel {
     }
 
     /// Opens a page in a new tab of a browser window.
-    private func open(_ url: URL) {
+    func open(_ url: URL) {
         (NSApp.delegate as? AppDelegate)?.application(NSApp, open: [url])
     }
 }

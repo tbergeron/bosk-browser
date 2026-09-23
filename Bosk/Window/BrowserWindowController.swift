@@ -271,6 +271,11 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate {
         }
     }
 
+    @objc func toggleReader(_ sender: Any?) {
+        guard let tab = store.selectedTab else { return }
+        ReaderMode.toggle(in: tab)
+    }
+
     @objc func togglePinTab(_ sender: Any?) {
         guard let tab = store.selectedTab else { return }
         if tab.isPinned { store.unpin(tab) } else { store.pin(tab) }
@@ -312,8 +317,14 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate {
 }
 
 extension BrowserWindowController: NSMenuItemValidation {
-    /// Only "Bookmark This Page" changes: its title says what it will do, and it needs a web page.
+    /// Only "Bookmark This Page" and "Show Reader" change: their titles say what they will do,
+    /// and they need a web page.
     func validateMenuItem(_ menuItem: NSMenuItem) -> Bool {
+        if menuItem.action == #selector(toggleReader(_:)) {
+            let item = store.selectedTab.flatMap(ReaderMode.menuItem)
+            menuItem.title = item?.title ?? "Show Reader"
+            return item != nil
+        }
         guard menuItem.action == #selector(bookmarkPage(_:)) else { return true }
         guard let url = store.selectedTab?.url, ["http", "https"].contains(url.scheme ?? "") else {
             menuItem.title = "Bookmark This Page"

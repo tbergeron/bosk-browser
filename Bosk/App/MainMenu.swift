@@ -53,6 +53,8 @@ enum MainMenu {
         viewMenu.addItem(item("Reload Page", #selector(BrowserWindowController.browserReload(_:)), "r"))
         viewMenu.addItem(item("Stop", #selector(BrowserWindowController.browserStop(_:)), "."))
         viewMenu.addItem(.separator())
+        viewMenu.addItem(item("Show Reader", #selector(BrowserWindowController.toggleReader(_:)), "R"))
+        viewMenu.addItem(.separator())
         viewMenu.addItem(item("Zoom In", #selector(BrowserWindowController.zoomIn(_:)), "="))
         viewMenu.addItem(item("Zoom In", #selector(BrowserWindowController.zoomIn(_:)), "+", alternate: true))
         viewMenu.addItem(item("Zoom Out", #selector(BrowserWindowController.zoomOut(_:)), "-"))
