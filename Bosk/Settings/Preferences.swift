@@ -13,6 +13,9 @@ enum Preferences {
     private static let sleepsTabsKey = "BoskSleepsTabs"
     private static let downloadFolderKey = "BoskDownloadFolder"
     private static let asksWhereToSaveKey = "BoskAsksWhereToSave"
+    private static let sidebarWidthKey = "BoskSidebarWidth"
+    private static let extensionOrderKey = "BoskExtensionOrder"
+    private static let unpinnedExtensionsKey = "BoskUnpinnedExtensions"
 
     static var appearance: Appearance {
         get { UserDefaults.standard.string(forKey: appearanceKey).flatMap(Appearance.init) ?? .system }
@@ -58,5 +61,26 @@ enum Preferences {
     static var asksWhereToSave: Bool {
         get { UserDefaults.standard.bool(forKey: asksWhereToSaveKey) }
         set { UserDefaults.standard.set(newValue, forKey: asksWhereToSaveKey) }
+    }
+
+    /// The open sidebar's width. The user sets it with a drag on the sidebar edge.
+    static var sidebarWidth: CGFloat {
+        get {
+            let width = UserDefaults.standard.double(forKey: sidebarWidthKey)
+            return width > 0 ? width : Defaults.sidebarWidth
+        }
+        set { UserDefaults.standard.set(Double(newValue), forKey: sidebarWidthKey) }
+    }
+
+    /// Extension IDs in the user's top bar order (see ExtensionToolbarOrder).
+    static var extensionOrder: [String] {
+        get { UserDefaults.standard.stringArray(forKey: extensionOrderKey) ?? [] }
+        set { UserDefaults.standard.set(newValue, forKey: extensionOrderKey) }
+    }
+
+    /// Extensions that do not show in the top bar. They show in the extensions list only.
+    static var unpinnedExtensions: Set<String> {
+        get { Set(UserDefaults.standard.stringArray(forKey: unpinnedExtensionsKey) ?? []) }
+        set { UserDefaults.standard.set(newValue.sorted(), forKey: unpinnedExtensionsKey) }
     }
 }

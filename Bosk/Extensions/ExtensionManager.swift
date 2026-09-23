@@ -249,7 +249,8 @@ final class ExtensionManager: NSObject {
         observers[ObjectIdentifier(owner)] = nil
     }
 
-    private func changed() {
+    /// Also called when the top bar order or pins change, so each window's bar reloads.
+    func changed() {
         observers.values.forEach { $0() }
     }
 

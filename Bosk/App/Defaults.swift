@@ -37,9 +37,15 @@ enum Defaults {
     static let snapshotWidth: CGFloat = 900
 
     static let topBarHeight: CGFloat = 44
+    /// The open sidebar's width until the user drags its edge (see Preferences.sidebarWidth).
     static let sidebarWidth: CGFloat = 250
-    /// Folded sidebar. Wide enough for the three window buttons.
-    static let stripWidth: CGFloat = 76
+    static let minimumSidebarWidth: CGFloat = 180
+    static let maximumSidebarWidth: CGFloat = 420
+    /// A drag of the sidebar edge to the left of this folds the sidebar into the strip;
+    /// a drag of the strip edge to the right of it opens the sidebar again.
+    static let sidebarFoldDragWidth: CGFloat = 130
+    /// Folded sidebar. The window buttons are wider: the top bar makes room for the rest.
+    static let stripWidth: CGFloat = 57
     static let sidebarHeaderHeight: CGFloat = 44
     static let tabRowHeight: CGFloat = 34
     /// Space around the web content card.

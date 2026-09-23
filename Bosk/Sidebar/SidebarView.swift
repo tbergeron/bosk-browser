@@ -79,6 +79,8 @@ final class SidebarView: NSView, NSTableViewDataSource, NSTableViewDelegate {
         tableView.action = #selector(rowClicked)
         tableView.menu = NSMenu()
         tableView.menu?.delegate = self
+        // "Close Other Tabs" is disabled when there is no other tab.
+        tableView.menu?.autoenablesItems = false
         tableView.registerForDraggedTypes([.boskTab])
         tableView.setDraggingSourceOperationMask(.move, forLocal: true)
         tableView.draggingDestinationFeedbackStyle = .gap
@@ -271,7 +273,20 @@ extension SidebarView: NSMenuDelegate {
         guard row >= 0, row < store.tabs.count else { return }
         let tab = store.tabs[row]
         menu.addItem(ClosureMenuItem("Pin Tab") { [weak self] in self?.store.pin(tab) })
+        menu.addItem(ClosureMenuItem("Copy Address") { tab.copyAddress() })
         menu.addItem(.separator())
         menu.addItem(ClosureMenuItem("Close Tab") { [weak self] in self?.store.close(tab) })
+        let closeOthers = ClosureMenuItem("Close Other Tabs") { [weak self] in self?.store.closeOtherTabs(than: tab) }
+        closeOthers.isEnabled = store.tabs.count > 1
+        menu.addItem(closeOthers)
+    }
+}
+
+extension Tab {
+    /// For "Copy Address" in the tab menus.
+    func copyAddress() {
+        guard let url else { return }
+        NSPasteboard.general.clearContents()
+        NSPasteboard.general.setString(url.absoluteString, forType: .string)
     }
 }

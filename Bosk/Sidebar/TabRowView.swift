@@ -13,6 +13,8 @@ final class TabRowView: NSTableRowView {
     private let titleField = NSTextField(labelWithString: "")
     private let closeButton = NSButton()
     private var isCurrent = false
+    /// "plus" or "globe" when the row has no favicon.
+    private var symbolName: String?
     private var isHovered = false
     /// Folded sidebar: icon only, centered.
     private(set) var isCompact = false
@@ -54,8 +56,8 @@ final class TabRowView: NSTableRowView {
         titleField.textColor = isNewTabRow ? .secondaryLabelColor : .labelColor
         titleField.isHidden = isCompact
         toolTip = isCompact ? title : nil
-        let image = icon ?? NSImage(systemSymbolName: isNewTabRow ? "plus" : "globe", accessibilityDescription: nil)
-        iconLayer.contents = image
+        symbolName = icon == nil ? (isNewTabRow ? "plus" : "globe") : nil
+        iconLayer.contents = icon ?? symbolImage()
         iconLayer.opacity = icon == nil && !isNewTabRow ? 0.5 : 1
         closeButton.isHidden = isNewTabRow || isCompact || !(isHovered || isCurrent)
         onClose = isNewTabRow ? nil : onClose
@@ -99,7 +101,20 @@ final class TabRowView: NSTableRowView {
 
     override func viewDidChangeEffectiveAppearance() {
         super.viewDidChangeEffectiveAppearance()
+        if symbolName != nil { iconLayer.contents = symbolImage() }
         updateColors()
+    }
+
+    /// A layer draws a symbol black in every appearance: draw it in the label color of this row.
+    private func symbolImage() -> NSImage? {
+        guard let symbolName, let symbol = NSImage(systemSymbolName: symbolName, accessibilityDescription: nil) else { return nil }
+        let color = NSColor(cgColor: resolved(.labelColor)) ?? .labelColor
+        return NSImage(size: symbol.size, flipped: false) { rect in
+            symbol.draw(in: rect)
+            color.set()
+            rect.fill(using: .sourceAtop)
+            return true
+        }
     }
 
     // Selection is drawn by `backgroundLayer`, not by NSTableView.

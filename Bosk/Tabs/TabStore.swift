@@ -144,6 +144,13 @@ final class TabStore {
         if tab === selectedTab { selectAfterClosing(tab, at: allIndex) }
     }
 
+    /// Closes the normal tabs other than `tab`. Pinned tabs stay. `tab` is selected first,
+    /// so no tab that is about to close is selected (and woken) on the way.
+    func closeOtherTabs(than tab: Tab) {
+        select(tab)
+        for other in tabs where other !== tab { close(other) }
+    }
+
     private func selectAfterClosing(_ closed: Tab, at index: Int) {
         selectedTab = nil
         if let opener = closed.opener, allTabs.contains(where: { $0 === opener }) {

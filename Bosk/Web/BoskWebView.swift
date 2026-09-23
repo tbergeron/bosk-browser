@@ -1,7 +1,7 @@
 import AppKit
 import WebKit
 
-/// WKWebView with Bosk's context menu: "New Window" items open tabs, and "Pin Tab".
+/// WKWebView with Bosk's context menu: "New Window" items open tabs.
 final class BoskWebView: WKWebView {
     override func willOpenMenu(_ menu: NSMenu, with event: NSEvent) {
         super.willOpenMenu(menu, with: event)
@@ -22,8 +22,5 @@ final class BoskWebView: WKWebView {
                 extensionItems.forEach(menu.addItem)
             }
         }
-        menu.addItem(.separator())
-        menu.addItem(withTitle: "Pin or Unpin Tab",
-                     action: #selector(BrowserWindowController.togglePinTab(_:)), keyEquivalent: "")
     }
 }

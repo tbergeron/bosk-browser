@@ -125,6 +125,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     // MARK: Menu actions when no browser window is in front
 
     @objc func newWindow(_ sender: Any?) { openWindow() }
+    /// Cmd+W in a window that has no tabs (Settings, About) closes that window.
+    @objc func closeTab(_ sender: Any?) {
+        guard let window = NSApp.keyWindow, window.styleMask.contains(.closable) else { return }
+        window.performClose(sender)
+    }
     @objc func showSettings(_ sender: Any?) { SettingsWindowController.shared.show() }
 
     /// The standard About window, with a link to the source code.

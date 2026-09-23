@@ -22,7 +22,6 @@ struct SettingsView: View {
     }
 
     @State var model: SettingsModel
-    @State private var pane = Pane.general
 
     var body: some View {
         HStack(spacing: 0) {
@@ -30,8 +29,8 @@ struct SettingsView: View {
             Divider()
             ScrollView {
                 VStack(alignment: .leading, spacing: 16) {
-                    Text(pane.rawValue).font(.title.bold())
-                    switch pane {
+                    Text(model.pane.rawValue).font(.title.bold())
+                    switch model.pane {
                     case .general: GeneralPane(model: model)
                     case .tabs: TabsPane(model: model)
                     case .extensions: ExtensionsPane(model: model)
@@ -52,24 +51,24 @@ struct SettingsView: View {
         // The title bar is transparent: the sidebar and the divider go up to the top edge.
         .ignoresSafeArea()
         .frame(width: 740, height: 560)
-        .onChange(of: pane) { model.message = nil }
+        .onChange(of: model.pane) { model.message = nil }
     }
 
     private var sidebar: some View {
         VStack(alignment: .leading, spacing: 2) {
             Text("Settings").font(.headline).padding(.horizontal, 10).padding(.bottom, 10)
             ForEach(Pane.allCases) { item in
-                Button { pane = item } label: {
+                Button { model.pane = item } label: {
                     Label(item.rawValue, systemImage: item.symbol)
                         .frame(maxWidth: .infinity, alignment: .leading)
                         .padding(.horizontal, 10)
                         .padding(.vertical, 7)
                         .contentShape(Rectangle())
                         .background(RoundedRectangle(cornerRadius: 8)
-                            .fill(pane == item ? Color.primary.opacity(0.08) : .clear))
+                            .fill(model.pane == item ? Color.primary.opacity(0.08) : .clear))
                 }
                 .buttonStyle(.plain)
-                .fontWeight(pane == item ? .semibold : .regular)
+                .fontWeight(model.pane == item ? .semibold : .regular)
             }
             Spacer()
         }

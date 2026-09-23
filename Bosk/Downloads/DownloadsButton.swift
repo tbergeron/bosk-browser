@@ -23,10 +23,11 @@ final class DownloadsButton: NSButton {
     @available(*, unavailable)
     required init?(coder: NSCoder) { fatalError("init(coder:) is not used") }
 
-    override var fittingSize: NSSize { NSSize(width: 28, height: 28) }
+    override var fittingSize: NSSize { isHidden ? .zero : NSSize(width: 28, height: 28) }
 
     private func refresh() {
         isHidden = DownloadManager.shared.items.isEmpty
+        superview?.needsLayout = true
         contentTintColor = DownloadManager.shared.hasRunningDownloads ? .controlAccentColor : .secondaryLabelColor
         if popover.isShown { popover.contentViewController = DownloadsList() }
     }

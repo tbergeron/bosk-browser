@@ -17,6 +17,9 @@ final class TopBar: NSView {
     private let progressLayer = CALayer()
     private let separator = CALayer()
     private(set) var accessoryViews: [NSView] = []
+    private weak var tab: Tab?
+    /// The menu's "Share" item does not keep its picker.
+    private var sharePicker: NSSharingServicePicker?
 
     override init(frame: NSRect) {
         super.init(frame: frame)
@@ -25,6 +28,8 @@ final class TopBar: NSView {
         addressField.lineBreakMode = .byTruncatingTail
         addressField.font = .systemFont(ofSize: 13, weight: .medium)
         addressField.addGestureRecognizer(NSClickGestureRecognizer(target: self, action: #selector(addressClicked)))
+        addressField.menu = NSMenu()
+        addressField.menu?.delegate = self
         progressLayer.backgroundColor = NSColor.controlAccentColor.cgColor
         progressLayer.opacity = 0
         separator.backgroundColor = NSColor.separatorColor.cgColor
@@ -54,6 +59,7 @@ final class TopBar: NSView {
     }
 
     func update(with tab: Tab?) {
+        self.tab = tab
         backButton.isEnabled = tab?.canGoBack ?? false
         forwardButton.isEnabled = tab?.canGoForward ?? false
         let loading = tab?.isLoading ?? false
@@ -97,8 +103,11 @@ final class TopBar: NSView {
             x += 32
         }
         var right = bounds.maxX - 10
+        // A hidden view (no downloads, no extensions) takes no space, so the last
+        // visible button is as far from the right edge as Back is from the left edge.
         for view in accessoryViews.reversed() {
             let size = view.fittingSize
+            guard size.width > 0 else { continue }
             right -= size.width
             view.frame = NSRect(x: right, y: midY - size.height / 2, width: size.width, height: size.height)
             right -= 6
@@ -117,4 +126,16 @@ final class TopBar: NSView {
     }
 
     @objc private func addressClicked() { onAddressClick?() }
+}
+
+extension TopBar: NSMenuDelegate {
+    /// The address's right-click menu, for the page shown now.
+    func menuNeedsUpdate(_ menu: NSMenu) {
+        menu.removeAllItems()
+        guard let url = tab?.url else { return }
+        menu.addItem(ClosureMenuItem("Copy Address") { [weak self] in self?.tab?.copyAddress() })
+        let picker = NSSharingServicePicker(items: [url])
+        sharePicker = picker
+        menu.addItem(picker.standardShareMenuItem)
+    }
 }

@@ -8,9 +8,10 @@ import WebKit
 @MainActor
 final class SettingsWindowController: NSWindowController {
     static let shared = SettingsWindowController()
+    private let model = SettingsModel()
 
     private init() {
-        let window = NSWindow(contentViewController: NSHostingController(rootView: SettingsView(model: .init())))
+        let window = NSWindow(contentViewController: NSHostingController(rootView: SettingsView(model: model)))
         window.title = "Settings"
         window.styleMask = [.titled, .closable, .fullSizeContentView]
         window.titlebarAppearsTransparent = true
@@ -22,7 +23,8 @@ final class SettingsWindowController: NSWindowController {
     @available(*, unavailable)
     required init?(coder: NSCoder) { fatalError("init(coder:) is not used") }
 
-    func show() {
+    func show(pane: SettingsView.Pane? = nil) {
+        if let pane { model.pane = pane }
         window?.center()
         showWindow(nil)
         NSApp.activate()
@@ -43,6 +45,7 @@ final class SettingsModel {
         var enabled: Bool
     }
 
+    var pane = SettingsView.Pane.general
     var isDefaultBrowser = false
     var defaultZoom = PageZoom.defaultZoom
     var appearance = Preferences.appearance

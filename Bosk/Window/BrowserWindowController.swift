@@ -37,6 +37,7 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate {
         topBar.onAddressClick = { [weak self] in self?.openLocation(nil) }
         sidebar.onNewTab = { [weak self] in self?.showCommandBar(target: .newTab) }
         sidebar.onToggleFold = { [weak self] in self?.toggleSidebar(nil) }
+        rootView.onDragFold = { [weak self] folded in self?.setSidebarFolded(folded, animated: true) }
         store.delegate = self
         store.window = window
         findBar.onClose = { [weak self] in self?.hideFindBar() }
@@ -245,6 +246,11 @@ private final class RootView: NSView {
     let topBar: TopBar
     let container: WebContainerView
     let findBar: FindBar
+    /// A drag of the sidebar edge asks to fold (true) or open (false) the sidebar.
+    var onDragFold: ((Bool) -> Void)?
+    private let resizeHandle = SidebarResizeHandle()
+    /// The open sidebar's width. The user changes it with a drag on the sidebar edge.
+    private var openWidth = Preferences.sidebarWidth
     private(set) var isSidebarFolded = false
     private(set) var isFindBarVisible = false
     private var isAnimating = false
@@ -268,6 +274,12 @@ private final class RootView: NSView {
         addSubview(card)
         // Above the card: while the sidebar opens, it slides over the page.
         addSubview(sidebar)
+        resizeHandle.onDrag = { [weak self] x in self?.dragSidebarEdge(to: x) }
+        resizeHandle.onDragEnd = { [weak self] in
+            guard let self, !self.isSidebarFolded else { return }
+            Preferences.sidebarWidth = self.openWidth
+        }
+        addSubview(resizeHandle)
     }
 
     @available(*, unavailable)
@@ -286,7 +298,19 @@ private final class RootView: NSView {
         layoutCard(sidebarWidth: sidebarWidth)
     }
 
-    private var sidebarWidth: CGFloat { isSidebarFolded ? Defaults.stripWidth : Defaults.sidebarWidth }
+    private var sidebarWidth: CGFloat { isSidebarFolded ? Defaults.stripWidth : openWidth }
+
+    /// `x` is the mouse position in this view. Narrow enough, the sidebar folds into the strip.
+    private func dragSidebarEdge(to x: CGFloat) {
+        guard !isAnimating else { return }
+        let folds = x < Defaults.sidebarFoldDragWidth
+        guard !folds else {
+            if !isSidebarFolded { onDragFold?(true) }
+            return
+        }
+        openWidth = min(max(x, Defaults.minimumSidebarWidth), Defaults.maximumSidebarWidth)
+        if isSidebarFolded { onDragFold?(false) } else { needsLayout = true }
+    }
 
     /// The web view changes size one time only, never on each animation frame:
     /// - Fold: the card takes its new size first, under the sidebar; then the sidebar shrinks
@@ -330,6 +354,7 @@ private final class RootView: NSView {
         super.layout()
         guard !isAnimating else { return }
         sidebar.frame = NSRect(x: 0, y: 0, width: sidebarWidth, height: bounds.height)
+        resizeHandle.frame = NSRect(x: sidebarWidth - 4, y: 0, width: 8, height: bounds.height)
         layoutCard(sidebarWidth: sidebarWidth)
     }
 
@@ -339,6 +364,9 @@ private final class RootView: NSView {
                             width: max(0, bounds.width - sidebarWidth - inset),
                             height: max(0, bounds.height - inset * 2))
         let barHeight = Defaults.topBarHeight
+        // The window buttons can go past the strip: Back starts after them.
+        let buttonsMaxX = window?.standardWindowButton(.zoomButton)?.frame.maxX ?? 0
+        topBar.leadingInset = max(0, buttonsMaxX + 6 - sidebarWidth)
         let size = card.bounds.size
         // The card is not flipped: y = 0 is the bottom.
         topBar.frame = NSRect(x: 0, y: size.height - barHeight, width: size.width, height: barHeight)
@@ -346,4 +374,27 @@ private final class RootView: NSView {
         findBar.frame = NSRect(x: 0, y: size.height - barHeight - findHeight, width: size.width, height: findHeight)
         container.frame = NSRect(x: 0, y: 0, width: size.width, height: size.height - barHeight - findHeight)
     }
+}
+
+/// The sidebar edge: drag it to change the sidebar width.
+@MainActor
+private final class SidebarResizeHandle: NSView {
+    /// The mouse x position in the superview.
+    var onDrag: ((CGFloat) -> Void)?
+    var onDragEnd: (() -> Void)?
+
+    override var mouseDownCanMoveWindow: Bool { false }
+
+    override func resetCursorRects() {
+        addCursorRect(bounds, cursor: .resizeLeftRight)
+    }
+
+    override func mouseDown(with event: NSEvent) {}
+
+    override func mouseDragged(with event: NSEvent) {
+        guard let superview else { return }
+        onDrag?(superview.convert(event.locationInWindow, from: nil).x)
+    }
+
+    override func mouseUp(with event: NSEvent) { onDragEnd?() }
 }

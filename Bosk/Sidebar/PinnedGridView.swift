@@ -142,6 +142,7 @@ final class PinnedGridView: NSView {
         let menu = NSMenu()
         menu.addItem(ClosureMenuItem("Unpin Tab") { [weak self] in self?.onUnpin?(tab) })
         menu.addItem(ClosureMenuItem("Reset Pinned Tab") { [weak self] in self?.onClose?(tab) })
+        menu.addItem(ClosureMenuItem("Copy Address") { tab.copyAddress() })
         return menu
     }
 }
