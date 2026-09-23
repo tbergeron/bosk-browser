@@ -1,4 +1,5 @@
 import AppKit
+import BoskCore
 
 /// The menu bar, built in code (no storyboard or XIB). Browser actions go to the
 /// first responder, so the front BrowserWindowController (or AppDelegate) handles them.
@@ -28,7 +29,8 @@ enum MainMenu {
         fileMenu.addItem(item("Close Window", #selector(NSWindow.performClose(_:)), "W"))
         fileMenu.addItem(item("Reopen Closed Tab", #selector(BrowserWindowController.reopenClosedTab(_:)), "T"))
         fileMenu.addItem(.separator())
-        fileMenu.addItem(item("Print…", #selector(BrowserWindowController.printPage(_:)), "p"))
+        // No shortcut: Cmd+P is Search Commands.
+        fileMenu.addItem(withTitle: "Print…", action: #selector(BrowserWindowController.printPage(_:)), keyEquivalent: "")
         add(fileMenu, title: "File", to: main)
 
         let editMenu = NSMenu(title: "Edit")
@@ -46,6 +48,8 @@ enum MainMenu {
         add(editMenu, title: "Edit", to: main)
 
         let viewMenu = NSMenu(title: "View")
+        viewMenu.addItem(item("Search Commands…", #selector(BrowserWindowController.searchCommands(_:)), "p"))
+        viewMenu.addItem(.separator())
         viewMenu.addItem(item("Reload Page", #selector(BrowserWindowController.browserReload(_:)), "r"))
         viewMenu.addItem(item("Stop", #selector(BrowserWindowController.browserStop(_:)), "."))
         viewMenu.addItem(.separator())
@@ -58,12 +62,9 @@ enum MainMenu {
         viewMenu.addItem(item("Enter Full Screen", #selector(NSWindow.toggleFullScreen(_:)), "f", [.command, .control]))
         add(viewMenu, title: "View", to: main)
 
-        let historyMenu = NSMenu(title: "History")
-        historyMenu.addItem(item("Back", #selector(BrowserWindowController.browserBack(_:)), "["))
-        historyMenu.addItem(item("Forward", #selector(BrowserWindowController.browserForward(_:)), "]"))
-        add(historyMenu, title: "History", to: main)
-
         let tabsMenu = NSMenu(title: "Tabs")
+        tabsMenu.addItem(item("Search Tabs…", #selector(BrowserWindowController.searchTabs(_:)), "A"))
+        tabsMenu.addItem(.separator())
         tabsMenu.addItem(item("Next Tab", #selector(BrowserWindowController.selectNextTab(_:)), "\t", [.control]))
         tabsMenu.addItem(item("Previous Tab", #selector(BrowserWindowController.selectPreviousTab(_:)), "\t", [.control, .shift]))
         tabsMenu.addItem(item("Next Tab", #selector(BrowserWindowController.selectNextTab(_:)), "}", [.command, .shift], alternate: true))
@@ -79,6 +80,23 @@ enum MainMenu {
         }
         add(tabsMenu, title: "Tabs", to: main)
 
+        let historyMenu = NSMenu(title: "History")
+        historyMenu.addItem(item("Back", #selector(BrowserWindowController.browserBack(_:)), "["))
+        historyMenu.addItem(item("Forward", #selector(BrowserWindowController.browserForward(_:)), "]"))
+        historyMenu.addItem(.separator())
+        historyMenu.addItem(item("Show All History", #selector(BrowserWindowController.showHistory(_:)), "y"))
+        historyMenu.addItem(.separator())
+        historyMenu.addItem(withTitle: "Clear History…", action: #selector(AppDelegate.clearHistory(_:)), keyEquivalent: "")
+        add(historyMenu, title: "History", to: main)
+
+        let bookmarksMenu = NSMenu(title: "Bookmarks")
+        bookmarksMenu.addItem(item("Bookmark This Page", #selector(BrowserWindowController.bookmarkPage(_:)), "B"))
+        bookmarksMenu.addItem(item("Show Bookmarks", #selector(BrowserWindowController.showBookmarks(_:)), "b",
+                                   [.command, .option]))
+        bookmarksMenu.addItem(.separator())
+        bookmarksMenu.delegate = bookmarksMenuDelegate
+        add(bookmarksMenu, title: "Bookmarks", to: main)
+
         let windowMenu = NSMenu(title: "Window")
         windowMenu.addItem(withTitle: "Minimize", action: #selector(NSWindow.performMiniaturize(_:)), keyEquivalent: "m")
         windowMenu.addItem(withTitle: "Zoom", action: #selector(NSWindow.performZoom(_:)), keyEquivalent: "")
@@ -87,6 +105,43 @@ enum MainMenu {
 
         return main
     }
+
+    /// The menu bar items for Search Commands, with the name of their menu.
+    /// Titles and on/off states are current, because each menu is updated first.
+    static func commands() -> [(menu: String, item: NSMenuItem)] {
+        var commands: [(menu: String, item: NSMenuItem)] = []
+        for top in NSApp.mainMenu?.items ?? [] {
+            guard let menu = top.submenu else { continue }
+            // The Bookmarks menu makes its bookmark items only when it opens.
+            menu.delegate?.menuNeedsUpdate?(menu)
+            menu.update()
+            for item in menu.items where !item.isSeparatorItem && !item.isHidden && !item.hasSubmenu {
+                guard let action = item.action, !hiddenCommands.contains(action) else { continue }
+                commands.append((top.title, item))
+            }
+        }
+        return commands
+    }
+
+    /// Search Commands itself, and the text-editing items: in the bar, they would act on
+    /// the bar's own text field.
+    private static let hiddenCommands: Set<Selector> = [
+        #selector(BrowserWindowController.searchCommands(_:)),
+        Selector(("undo:")), Selector(("redo:")),
+        #selector(NSText.cut(_:)), #selector(NSText.copy(_:)), #selector(NSText.paste(_:)),
+        #selector(NSText.selectAll(_:)),
+    ]
+
+    /// "⇧⌘T", as the menu bar shows the shortcut; empty if the item has none.
+    static func shortcut(of item: NSMenuItem) -> String {
+        let modifiers = item.keyEquivalentModifierMask
+        return SuggestionRanker.shortcutText(key: item.keyEquivalent,
+                                             control: modifiers.contains(.control), option: modifiers.contains(.option),
+                                             shift: modifiers.contains(.shift), command: modifiers.contains(.command))
+    }
+
+    /// NSMenu does not keep its delegate.
+    private static let bookmarksMenuDelegate = BookmarksMenuDelegate()
 
     private static func item(_ title: String, _ action: Selector, _ key: String,
                              _ modifiers: NSEvent.ModifierFlags = .command,
@@ -101,5 +156,32 @@ enum MainMenu {
     private static func add(_ submenu: NSMenu, title: String, to main: NSMenu) {
         let item = main.addItem(withTitle: title, action: nil, keyEquivalent: "")
         item.submenu = submenu
+    }
+}
+
+/// Lists the bookmarks under the fixed items of the Bookmarks menu, each time the menu opens.
+@MainActor
+private final class BookmarksMenuDelegate: NSObject, NSMenuDelegate {
+    /// Bookmark This Page, Show Bookmarks, and the separator.
+    private let fixedItemCount = 3
+
+    func menuNeedsUpdate(_ menu: NSMenu) {
+        while menu.items.count > fixedItemCount { menu.removeItem(at: fixedItemCount) }
+        let bookmarks = BookmarkStore.shared.entries
+        guard !bookmarks.isEmpty else {
+            menu.addItem(withTitle: "No Bookmarks", action: nil, keyEquivalent: "").isEnabled = false
+            return
+        }
+        for bookmark in bookmarks {
+            let item = ClosureMenuItem(bookmark.title.isEmpty ? bookmark.url.absoluteString : bookmark.title) {
+                // A new tab in the front window.
+                (NSApp.delegate as? AppDelegate)?.application(NSApp, open: [bookmark.url])
+            }
+            let icon = (FaviconStore.shared.cachedIcon(for: bookmark.url)
+                ?? NSImage(systemSymbolName: "bookmark", accessibilityDescription: nil))?.copy() as? NSImage
+            icon?.size = NSSize(width: 16, height: 16)
+            item.image = icon
+            menu.addItem(item)
+        }
     }
 }

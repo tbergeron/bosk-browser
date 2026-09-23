@@ -2,7 +2,7 @@ import BoskCore
 import Foundation
 import SQLite3
 
-/// Visited pages in a SQLite file, for command bar suggestions. An actor, so database
+/// Visited pages in a SQLite file, for command bar suggestions and the History list. An actor, so database
 /// work never runs on the main thread.
 actor HistoryStore {
     static let shared = HistoryStore()
@@ -11,6 +11,7 @@ actor HistoryStore {
     private var recordStatement: OpaquePointer?
     private var searchStatement: OpaquePointer?
     private var titleStatement: OpaquePointer?
+    private var removeStatement: OpaquePointer?
 
     private init() {
         let directory = Defaults.dataDirectory
@@ -38,6 +39,7 @@ actor HistoryStore {
                 last_visit = excluded.last_visit
             """)
         titleStatement = Self.prepare(db, "UPDATE history SET title = ?2 WHERE url = ?1")
+        removeStatement = Self.prepare(db, "DELETE FROM history WHERE url = ?1")
         searchStatement = Self.prepare(db, """
             SELECT url, title, visit_count, last_visit FROM history
             WHERE url LIKE ?1 ESCAPE '\\' OR title LIKE ?1 ESCAPE '\\'
@@ -48,6 +50,14 @@ actor HistoryStore {
     /// Deletes all history (Settings > Privacy).
     func clear() {
         Self.exec(db, "DELETE FROM history")
+    }
+
+    /// Removes one page (right-click in the History list).
+    func remove(url: URL) {
+        guard let statement = removeStatement else { return }
+        sqlite3_reset(statement)
+        bind(statement, 1, url.absoluteString)
+        sqlite3_step(statement)
     }
 
     /// Records one visit. Only web pages (http and https) go in history.
@@ -72,8 +82,19 @@ actor HistoryStore {
     /// Pages whose address or title contains the first word of `query`.
     /// SuggestionRanker filters and orders them.
     func candidates(for query: String) -> [SuggestionRanker.HistoryItem] {
-        guard let statement = searchStatement,
-              let word = query.lowercased().split(separator: " ").first else { return [] }
+        guard let word = query.lowercased().split(separator: " ").first else { return [] }
+        return pages(containing: String(word))
+    }
+
+    /// The History list: pages that contain the first word of `query`, or with no text,
+    /// the newest pages. SuggestionRanker.historyRows filters and orders them.
+    func visits(for query: String) -> [SuggestionRanker.HistoryItem] {
+        pages(containing: query.lowercased().split(whereSeparator: \.isWhitespace).first.map(String.init) ?? "")
+    }
+
+    /// The newest 200 pages whose address or title contains `word` (all pages for "").
+    private func pages(containing word: String) -> [SuggestionRanker.HistoryItem] {
+        guard let statement = searchStatement else { return [] }
         let escaped = word.replacingOccurrences(of: "\\", with: "\\\\")
             .replacingOccurrences(of: "%", with: "\\%").replacingOccurrences(of: "_", with: "\\_")
         sqlite3_reset(statement)

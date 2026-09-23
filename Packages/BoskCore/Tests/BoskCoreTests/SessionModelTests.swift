@@ -34,3 +34,14 @@ struct SessionModelTests {
         #expect(session.windows.first?.frame == nil)
     }
 }
+
+/// Bookmarks are saved to their own file; a saved list must come back the same.
+struct BookmarkTests {
+    @Test("A saved bookmark list decodes to the same list, in the same order")
+    func roundTrip() throws {
+        let list = [Bookmark(url: URL(string: "https://swift.org")!, title: "Swift"),
+                    Bookmark(url: URL(string: "https://example.com/a?b=c")!, title: "")]
+        let data = try JSONEncoder().encode(list)
+        #expect(try JSONDecoder().decode([Bookmark].self, from: data) == list)
+    }
+}

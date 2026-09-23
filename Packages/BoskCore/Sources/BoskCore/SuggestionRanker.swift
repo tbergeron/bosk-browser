@@ -28,11 +28,33 @@ public enum SuggestionRanker {
         }
     }
 
+    /// A menu bar item, for the Search Commands list.
+    public struct MenuCommand: Sendable {
+        public var title: String
+        /// The menu that has the item: "File", "View".
+        public var menu: String
+        /// "⇧⌘T", or empty if the item has no shortcut.
+        public var shortcut: String
+        public var isEnabled: Bool
+
+        public init(title: String, menu: String, shortcut: String, isEnabled: Bool) {
+            self.title = title
+            self.menu = menu
+            self.shortcut = shortcut
+            self.isEnabled = isEnabled
+        }
+    }
+
     public enum Suggestion: Equatable, Sendable {
         /// Go to the address the user typed, or search for it.
         case typed(URL)
         case openTab(id: UUID, title: String, url: URL?)
         case history(title: String, url: URL)
+        case bookmark(id: UUID, title: String, url: URL)
+        /// A row of the History list: a page and the time of its last visit.
+        case visit(title: String, url: URL, lastVisit: Date)
+        /// A menu bar item. `index` is its position in the list the command bar got.
+        case command(index: Int, title: String, menu: String, shortcut: String, isEnabled: Bool)
     }
 
     /// Row order:
@@ -40,8 +62,10 @@ public enum SuggestionRanker {
     ///    goes where the user usually goes.
     /// 2. The typed address or search.
     /// 3. Open tabs that match (switch to them instead of opening a second copy).
-    /// 4. Other history, most visited and most recent first.
+    /// 4. Bookmarks that match: the user saved them on purpose.
+    /// 5. Other history, most visited and most recent first.
     public static func suggestions(for rawQuery: String, openTabs: [OpenTab], history: [HistoryItem],
+                                   bookmarks: [Bookmark] = [],
                                    now: Date, searchURL: URL, limit: Int = 8) -> [Suggestion] {
         let query = rawQuery.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !query.isEmpty, let typed = InputClassifier.url(for: query, searchURL: searchURL) else { return [] }
@@ -71,11 +95,80 @@ public enum SuggestionRanker {
             rows.append(.openTab(id: tab.id, title: tab.title, url: tab.url))
             if let url = tab.url { usedURLs.insert(key(url)) }
         }
+        for bookmark in bookmarks where matches(words, title: bookmark.title, url: bookmark.url) {
+            guard !usedURLs.contains(key(bookmark.url)) else { continue }
+            rows.append(.bookmark(id: bookmark.id, title: bookmark.title, url: bookmark.url))
+            usedURLs.insert(key(bookmark.url))
+        }
         for item in ranked where !usedURLs.contains(key(item.url)) {
             rows.append(.history(title: item.title, url: item.url))
             usedURLs.insert(key(item.url))
         }
         return Array(rows.prefix(limit))
+    }
+
+    // MARK: Lists (Search Tabs, History, Bookmarks)
+    // Every word of the text must match. Empty text lists every row, so the user can browse.
+
+    /// Open tabs, in tab order.
+    public static func tabRows(for query: String, openTabs: [OpenTab]) -> [Suggestion] {
+        let words = listWords(query)
+        return openTabs.filter { matches(words, title: $0.title, url: $0.url) }
+            .map { .openTab(id: $0.id, title: $0.title, url: $0.url) }
+    }
+
+    /// Visited pages, newest first. Not in score order: this is a record of where the user was.
+    public static func historyRows(for query: String, history: [HistoryItem]) -> [Suggestion] {
+        let words = listWords(query)
+        return history.filter { matches(words, title: $0.title, url: $0.url) }
+            .sorted { $0.lastVisit > $1.lastVisit }
+            .map { .visit(title: $0.title, url: $0.url, lastVisit: $0.lastVisit) }
+    }
+
+    /// Bookmarks, in the order the user added them.
+    public static func bookmarkRows(for query: String, bookmarks: [Bookmark]) -> [Suggestion] {
+        let words = listWords(query)
+        return bookmarks.filter { matches(words, title: $0.title, url: $0.url) }
+            .map { .bookmark(id: $0.id, title: $0.title, url: $0.url) }
+    }
+
+    /// Menu bar items, in menu order. The words can match the title or the menu name,
+    /// so "history" also finds Back and Forward. Items that are off stay in the list.
+    public static func commandRows(for query: String, commands: [MenuCommand]) -> [Suggestion] {
+        let words = listWords(query)
+        return commands.enumerated()
+            .filter { matches(words, title: "\($0.element.title) \($0.element.menu)", url: nil) }
+            .map { .command(index: $0.offset, title: $0.element.title, menu: $0.element.menu,
+                            shortcut: $0.element.shortcut, isEnabled: $0.element.isEnabled) }
+    }
+
+    /// A shortcut as the menu bar shows it: "⇧⌘T", "⌃⇥". An uppercase letter means Shift.
+    public static func shortcutText(key: String, control: Bool, option: Bool, shift: Bool, command: Bool) -> String {
+        guard !key.isEmpty else { return "" }
+        let shift = shift || (key != key.lowercased())
+        let keyText = switch key {
+        case "\t": "⇥"
+        case "\r": "↩"
+        default: key.uppercased()
+        }
+        return (control ? "⌃" : "") + (option ? "⌥" : "") + (shift ? "⇧" : "") + (command ? "⌘" : "") + keyText
+    }
+
+    /// The header above a day of history: "Today", "Yesterday", or "Monday, Sep 21".
+    /// It uses calendar days, so a visit at 23:50 yesterday is "Yesterday" at 08:00 today.
+    public static func dayTitle(for date: Date, now: Date, calendar: Calendar = .current) -> String {
+        if calendar.isDate(date, inSameDayAs: now) { return "Today" }
+        if let yesterday = calendar.date(byAdding: .day, value: -1, to: now),
+           calendar.isDate(date, inSameDayAs: yesterday) { return "Yesterday" }
+        var style = Date.FormatStyle.dateTime.weekday(.wide).month(.abbreviated).day()
+        if !calendar.isDate(date, equalTo: now, toGranularity: .year) { style = style.year() }
+        style.calendar = calendar
+        style.timeZone = calendar.timeZone
+        return date.formatted(style)
+    }
+
+    private static func listWords(_ query: String) -> [String] {
+        query.lowercased().split(whereSeparator: \.isWhitespace).map(String.init)
     }
 
     /// Every word must appear in the title or the address.

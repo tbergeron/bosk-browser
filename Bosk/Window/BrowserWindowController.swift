@@ -72,24 +72,91 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate {
 
     // MARK: Command bar
 
-    func showCommandBar(target: CommandBarPanel.Target) {
+    func showCommandBar(target: CommandBarPanel.Target, mode: CommandBarPanel.Mode = .open) {
         guard let window else { return }
         let text = target == .currentTab ? (store.selectedTab?.url?.absoluteString ?? "") : ""
-        commandBar.present(over: window, text: text, target: target, provider: { text in
-            let openTabs = (NSApp.delegate as? AppDelegate)?.allTabs.map {
-                SuggestionRanker.OpenTab(id: $0.id, url: $0.url, title: $0.title)
-            } ?? []
+        // Read the menu bar while this window is still key, so each item's on/off state is for this window.
+        let menuItems = mode == .commands ? MainMenu.commands() : []
+        let commands = menuItems.map {
+            SuggestionRanker.MenuCommand(title: $0.item.title, menu: $0.menu,
+                                         shortcut: MainMenu.shortcut(of: $0.item), isEnabled: $0.item.isEnabled)
+        }
+        commandBar.present(over: window, text: text, target: target, mode: mode, provider: { text in
+            await Self.rows(for: text, mode: mode, commands: commands)
+        }, onChoose: { [weak self] choice, target in
+            if case .command(let index, _, _, _, _) = choice {
+                self?.run(menuItems[index].item)
+            } else {
+                self?.choose(choice, target: target)
+            }
+        }, onRemove: { choice in
+            switch choice {
+            case .visit(_, let url, _): await HistoryStore.shared.remove(url: url)
+            case .bookmark(let id, _, _): BookmarkStore.shared.remove(id: id)
+            case .typed, .openTab, .history, .command: break
+            }
+        })
+    }
+
+    /// Runs a menu bar item as the menu would: its own target (a bookmark, a window in the
+    /// Window menu), or else the responder chain of this window. The item is the sender,
+    /// so Tab 1…9 get their tag.
+    private func run(_ item: NSMenuItem) {
+        guard let action = item.action else { return }
+        window?.makeKeyAndOrderFront(nil)
+        NSApp.sendAction(action, to: item.target, from: item)
+    }
+
+    private static func rows(for text: String, mode: CommandBarPanel.Mode,
+                             commands: [SuggestionRanker.MenuCommand]) async -> [CommandBarPanel.Row] {
+        let openTabs = (NSApp.delegate as? AppDelegate)?.allTabs.map {
+            SuggestionRanker.OpenTab(id: $0.id, url: $0.url, title: $0.title)
+        } ?? []
+        switch mode {
+        case .open:
             let history = await HistoryStore.shared.candidates(for: text)
             return SuggestionRanker.suggestions(for: text, openTabs: openTabs, history: history,
-                                                now: Date(), searchURL: Defaults.searchURL)
-        }, onChoose: { [weak self] choice, target in
-            self?.choose(choice, target: target)
-        })
+                                                bookmarks: BookmarkStore.shared.entries,
+                                                now: Date(), searchURL: Defaults.searchURL).map { .item($0) }
+        case .tabs:
+            return section("Open Tabs", SuggestionRanker.tabRows(for: text, openTabs: openTabs))
+        case .bookmarks:
+            return section("Bookmarks", SuggestionRanker.bookmarkRows(for: text, bookmarks: BookmarkStore.shared.entries))
+        case .history:
+            let visits = SuggestionRanker.historyRows(for: text, history: await HistoryStore.shared.visits(for: text))
+            // One header for each day ("Today", "Yesterday", …). The rows are newest first.
+            let now = Date()
+            var rows: [CommandBarPanel.Row] = []
+            var day: String?
+            for visit in visits {
+                guard case .visit(_, _, let lastVisit) = visit else { continue }
+                let title = SuggestionRanker.dayTitle(for: lastVisit, now: now)
+                if title != day { rows.append(.header(title)) }
+                day = title
+                rows.append(.item(visit))
+            }
+            return rows
+        case .commands:
+            // One header for each menu ("File", "View", …), in menu bar order.
+            var rows: [CommandBarPanel.Row] = []
+            var menu: String?
+            for command in SuggestionRanker.commandRows(for: text, commands: commands) {
+                guard case .command(_, _, let commandMenu, _, _) = command else { continue }
+                if commandMenu != menu { rows.append(.header(commandMenu)) }
+                menu = commandMenu
+                rows.append(.item(command))
+            }
+            return rows
+        }
+    }
+
+    private static func section(_ title: String, _ items: [SuggestionRanker.Suggestion]) -> [CommandBarPanel.Row] {
+        items.isEmpty ? [] : [.header(title)] + items.map { .item($0) }
     }
 
     private func choose(_ choice: SuggestionRanker.Suggestion, target: CommandBarPanel.Target) {
         switch choice {
-        case .typed(let url), .history(_, let url):
+        case .typed(let url), .history(_, let url), .bookmark(_, _, let url), .visit(_, let url, _):
             if target == .currentTab, let tab = store.selectedTab {
                 tab.load(url)
             } else {
@@ -98,6 +165,8 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate {
             focusWebView()
         case .openTab(let id, _, _):
             (NSApp.delegate as? AppDelegate)?.showTab(id: id)
+        case .command:
+            break  // Run in showCommandBar, which has the menu items.
         }
     }
 
@@ -181,6 +250,25 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate {
         tab.zoomOverride = abs(next - PageZoom.defaultZoom) < 0.001 ? nil : next
     }
 
+    @objc func searchTabs(_ sender: Any?) { showCommandBar(target: .newTab, mode: .tabs) }
+    @objc func showHistory(_ sender: Any?) { showCommandBar(target: .newTab, mode: .history) }
+    @objc func showBookmarks(_ sender: Any?) { showCommandBar(target: .newTab, mode: .bookmarks) }
+    @objc func searchCommands(_ sender: Any?) { showCommandBar(target: .newTab, mode: .commands) }
+
+    /// Bookmarks the page, or removes its bookmark if it has one. Removing asks first:
+    /// nothing is deleted without a question.
+    @objc func bookmarkPage(_ sender: Any?) {
+        guard let tab = store.selectedTab, let url = tab.url else { return }
+        if let bookmark = BookmarkStore.shared.bookmark(for: url) {
+            let name = bookmark.title.isEmpty ? url.absoluteString : bookmark.title
+            guard confirm("Remove this bookmark?", "Bosk removes “\(name)” from Bookmarks.",
+                          button: "Remove Bookmark") else { return }
+            BookmarkStore.shared.remove(id: bookmark.id)
+        } else {
+            BookmarkStore.shared.add(url: url, title: tab.title)
+        }
+    }
+
     @objc func togglePinTab(_ sender: Any?) {
         guard let tab = store.selectedTab else { return }
         if tab.isPinned { store.unpin(tab) } else { store.pin(tab) }
@@ -190,6 +278,27 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate {
     func windowDidBecomeKey(_ notification: Notification) { ExtensionManager.shared.controller.didFocusWindow(self) }
     func windowDidEndLiveResize(_ notification: Notification) { SessionStore.shared.setNeedsSave() }
 
+    /// Close Window, Cmd+Shift+W and the close button ask first when the window has tabs:
+    /// its closed tabs go with the window, so Reopen Closed Tab cannot get them back.
+    /// Pinned tabs do not count (every window shows them), and Quit does not come here
+    /// (the session keeps the tabs).
+    func windowShouldClose(_ sender: NSWindow) -> Bool {
+        let count = store.tabs.count
+        guard count > 0 else { return true }
+        return confirm("Close this window?",
+                       count == 1 ? "Its tab closes. You cannot reopen it." : "Its \(count) tabs close. You cannot reopen them.",
+                       button: "Close Window")
+    }
+
+    private func confirm(_ title: String, _ text: String, button: String) -> Bool {
+        let alert = NSAlert()
+        alert.messageText = title
+        alert.informativeText = text
+        alert.addButton(withTitle: button).hasDestructiveAction = true
+        alert.addButton(withTitle: "Cancel")
+        return alert.runModal() == .alertFirstButtonReturn
+    }
+
     func windowWillClose(_ notification: Notification) {
         for tab in store.allTabs {
             ExtensionManager.shared.didClose(tab, windowIsClosing: true)
@@ -197,6 +306,19 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate {
         }
         ExtensionManager.shared.controller.didCloseWindow(self)
         (NSApp.delegate as? AppDelegate)?.windowControllerDidClose(self)
+    }
+}
+
+extension BrowserWindowController: NSMenuItemValidation {
+    /// Only "Bookmark This Page" changes: its title says what it will do, and it needs a web page.
+    func validateMenuItem(_ menuItem: NSMenuItem) -> Bool {
+        guard menuItem.action == #selector(bookmarkPage(_:)) else { return true }
+        guard let url = store.selectedTab?.url, ["http", "https"].contains(url.scheme ?? "") else {
+            menuItem.title = "Bookmark This Page"
+            return false
+        }
+        menuItem.title = BookmarkStore.shared.bookmark(for: url) == nil ? "Bookmark This Page" : "Remove Bookmark"
+        return true
     }
 }
 

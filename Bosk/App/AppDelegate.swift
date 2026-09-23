@@ -15,6 +15,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         NSApp.mainMenu = MainMenu.make()
+        BookmarkStore.shared.load()
         Preferences.applyAppearance()
         Updater.start()
         SessionStore.shared.snapshotProvider = { [weak self] in
@@ -132,18 +133,19 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
     }
     @objc func showSettings(_ sender: Any?) { SettingsWindowController.shared.show() }
 
-    /// The standard About window, with a link to the source code.
-    @objc func showAbout(_ sender: Any?) {
-        let paragraph = NSMutableParagraphStyle()
-        paragraph.alignment = .center
-        let credits = NSAttributedString(string: "Open source on GitHub", attributes: [
-            .link: Defaults.projectURL,
-            .font: NSFont.systemFont(ofSize: NSFont.smallSystemFontSize),
-            .paragraphStyle: paragraph,
-        ])
-        NSApp.orderFrontStandardAboutPanel(options: [.credits: credits])
-        NSApp.activate()
+    /// History > Clear History…. Same question as Settings > Privacy.
+    @objc func clearHistory(_ sender: Any?) {
+        let alert = NSAlert()
+        alert.messageText = "Clear all history?"
+        alert.informativeText = "Command bar suggestions forget every page you visited."
+        alert.addButton(withTitle: "Clear History").hasDestructiveAction = true
+        alert.addButton(withTitle: "Cancel")
+        guard alert.runModal() == .alertFirstButtonReturn else { return }
+        Task { await HistoryStore.shared.clear() }
     }
+
+    /// Settings > About: the version, updates, and the shortcuts.
+    @objc func showAbout(_ sender: Any?) { SettingsWindowController.shared.show(pane: .about) }
     @objc func checkForUpdates(_ sender: Any?) { Updater.checkForUpdates() }
 
     func validateMenuItem(_ menuItem: NSMenuItem) -> Bool {

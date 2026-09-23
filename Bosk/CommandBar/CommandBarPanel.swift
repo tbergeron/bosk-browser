@@ -2,24 +2,37 @@ import AppKit
 import BoskCore
 
 /// The floating bar that opens with Cmd+T (new tab) or Cmd+L (this tab).
-/// Type an address or a search; the rows below offer visited sites and open tabs.
+/// Type an address or a search; the rows below offer visited sites, bookmarks and open tabs.
 /// Up and Down choose a row; Return opens it.
+///
+/// The same bar also shows the lists (Search Tabs, History, Bookmarks, Search Commands): the list shows
+/// at once, and the text filters it.
 @MainActor
-final class CommandBarPanel: NSPanel, NSTextFieldDelegate, NSTableViewDataSource, NSTableViewDelegate {
+final class CommandBarPanel: NSPanel, NSTextFieldDelegate, NSTableViewDataSource, NSTableViewDelegate, NSMenuDelegate {
     enum Target { case newTab, currentTab }
+    enum Mode { case open, tabs, history, bookmarks, commands }
+    /// A row of the table: a section header ("Today") or a row the user can choose.
+    enum Row {
+        case header(String)
+        case item(SuggestionRanker.Suggestion)
+    }
     typealias Suggestion = SuggestionRanker.Suggestion
 
     private let field = NSTextField()
     private let glass = NSGlassEffectView()
+    private let scrollView = NSScrollView()
     private let tableView = NSTableView()
     private(set) var target: Target = .newTab
+    private(set) var mode: Mode = .open
     private var onChoose: ((Suggestion, Target) -> Void)?
-    private var provider: ((String) async -> [Suggestion])?
-    private var suggestions: [Suggestion] = []
+    private var onRemove: ((Suggestion) async -> Void)?
+    private var provider: ((String) async -> [Row])?
+    private var rows: [Row] = []
     private var queryTask: Task<Void, Never>?
 
     private let fieldHeight: CGFloat = 56
     private let rowHeight: CGFloat = 40
+    private let headerHeight: CGFloat = 28
 
     init() {
         super.init(contentRect: NSRect(x: 0, y: 0, width: Defaults.commandBarWidth, height: 56),
@@ -54,10 +67,18 @@ final class CommandBarPanel: NSPanel, NSTextFieldDelegate, NSTableViewDataSource
         tableView.target = self
         tableView.action = #selector(rowClicked)
         tableView.focusRingType = .none
+        tableView.menu = NSMenu()
+        tableView.menu?.delegate = self
+
+        scrollView.documentView = tableView
+        scrollView.drawsBackground = false
+        scrollView.hasVerticalScroller = true
+        scrollView.autohidesScrollers = true
+        scrollView.scrollerStyle = .overlay
 
         let content = NSView()
         content.addSubview(field)
-        content.addSubview(tableView)
+        content.addSubview(scrollView)
         glass.cornerRadius = 16
         glass.contentView = content
         contentView = glass
@@ -65,14 +86,24 @@ final class CommandBarPanel: NSPanel, NSTextFieldDelegate, NSTableViewDataSource
 
     override var canBecomeKey: Bool { true }
 
-    func present(over window: NSWindow, text: String, target: Target,
-                 provider: @escaping (String) async -> [Suggestion],
-                 onChoose: @escaping (Suggestion, Target) -> Void) {
+    func present(over window: NSWindow, text: String, target: Target, mode: Mode = .open,
+                 provider: @escaping (String) async -> [Row],
+                 onChoose: @escaping (Suggestion, Target) -> Void,
+                 onRemove: ((Suggestion) async -> Void)? = nil) {
         self.target = target
+        self.mode = mode
         self.onChoose = onChoose
+        self.onRemove = onRemove
         self.provider = provider
         field.stringValue = text
-        suggestions = []
+        field.placeholderString = switch mode {
+        case .open: "Search or enter address"
+        case .tabs: "Search tabs"
+        case .history: "Search history"
+        case .bookmarks: "Search bookmarks"
+        case .commands: "Search commands"
+        }
+        rows = []
         tableView.reloadData()
 
         let frame = window.frame
@@ -85,6 +116,8 @@ final class CommandBarPanel: NSPanel, NSTextFieldDelegate, NSTableViewDataSource
         makeKeyAndOrderFront(nil)
         makeFirstResponder(field)
         field.currentEditor()?.selectAll(nil)
+        // A list shows at once, before the user types.
+        if mode != .open { runQuery(text) }
     }
 
     func dismiss() {
@@ -92,6 +125,7 @@ final class CommandBarPanel: NSPanel, NSTextFieldDelegate, NSTableViewDataSource
         parent?.removeChildWindow(self)
         orderOut(nil)
         onChoose = nil
+        onRemove = nil
         provider = nil
     }
 
@@ -105,22 +139,37 @@ final class CommandBarPanel: NSPanel, NSTextFieldDelegate, NSTableViewDataSource
     // MARK: Suggestions
 
     func controlTextDidChange(_ notification: Notification) {
-        let text = field.stringValue
+        runQuery(field.stringValue)
+    }
+
+    private func runQuery(_ text: String) {
         queryTask?.cancel()
         queryTask = Task { [weak self] in
             guard let provider = self?.provider else { return }
             let rows = await provider(text)
             guard !Task.isCancelled, let self else { return }
-            self.suggestions = rows
+            self.rows = rows
             self.tableView.reloadData()
-            if !rows.isEmpty { self.tableView.selectRowIndexes([0], byExtendingSelection: false) }
+            if let first = rows.firstIndex(where: Self.isSelectable) {
+                self.tableView.selectRowIndexes([first], byExtendingSelection: false)
+            }
+            self.tableView.scrollRowToVisible(0)
             self.resizeForRows()
         }
     }
 
+    private var listHeight: CGFloat {
+        let content = rows.reduce(0) { $0 + height(of: $1) }
+        return min(content, CGFloat(Defaults.commandBarMaxVisibleRows) * rowHeight)
+    }
+
+    private func height(of row: Row) -> CGFloat {
+        if case .header = row { headerHeight } else { rowHeight }
+    }
+
     /// The top edge stays in place; the panel grows down.
     private func resizeForRows() {
-        let height = fieldHeight + CGFloat(suggestions.count) * rowHeight + (suggestions.isEmpty ? 0 : 8)
+        let height = fieldHeight + listHeight + (rows.isEmpty ? 0 : 8)
         var frame = self.frame
         frame.origin.y = frame.maxY - height
         frame.size.height = height
@@ -131,17 +180,53 @@ final class CommandBarPanel: NSPanel, NSTextFieldDelegate, NSTableViewDataSource
     private func layoutContent() {
         let size = frame.size
         field.frame = NSRect(x: 18, y: size.height - fieldHeight + 15, width: size.width - 36, height: 26)
-        tableView.frame = NSRect(x: 6, y: 4, width: size.width - 12, height: CGFloat(suggestions.count) * rowHeight)
+        scrollView.frame = NSRect(x: 6, y: 4, width: size.width - 12, height: listHeight)
         tableView.tableColumns.first?.width = size.width - 12
     }
 
-    func numberOfRows(in tableView: NSTableView) -> Int { suggestions.count }
+    func numberOfRows(in tableView: NSTableView) -> Int { rows.count }
+
+    func tableView(_ tableView: NSTableView, heightOfRow row: Int) -> CGFloat {
+        height(of: rows[row])
+    }
+
+    func tableView(_ tableView: NSTableView, shouldSelectRow row: Int) -> Bool {
+        Self.isSelectable(rows[row])
+    }
 
     func tableView(_ tableView: NSTableView, viewFor tableColumn: NSTableColumn?, row: Int) -> NSView? {
-        let cell = tableView.makeView(withIdentifier: SuggestionCell.identifier, owner: nil) as? SuggestionCell
-            ?? SuggestionCell()
-        cell.configure(suggestions[row])
-        return cell
+        switch rows[row] {
+        case .header(let title):
+            let cell = tableView.makeView(withIdentifier: HeaderCell.identifier, owner: nil) as? HeaderCell
+                ?? HeaderCell()
+            cell.configure(title)
+            return cell
+        case .item(let suggestion):
+            let cell = tableView.makeView(withIdentifier: SuggestionCell.identifier, owner: nil) as? SuggestionCell
+                ?? SuggestionCell()
+            cell.configure(suggestion)
+            return cell
+        }
+    }
+
+    /// The right-click menu of a History or Bookmarks row.
+    func menuNeedsUpdate(_ menu: NSMenu) {
+        menu.removeAllItems()
+        let row = tableView.clickedRow
+        guard let onRemove, rows.indices.contains(row), case .item(let suggestion) = rows[row] else { return }
+        let title: String
+        switch suggestion {
+        case .visit: title = "Remove from History"
+        case .bookmark: title = "Remove Bookmark"
+        default: return
+        }
+        menu.addItem(ClosureMenuItem(title) { [weak self] in
+            Task {
+                await onRemove(suggestion)
+                // The list shows the change only after the remove is done.
+                if let self { self.runQuery(self.field.stringValue) }
+            }
+        })
     }
 
     func control(_ control: NSControl, textView: NSTextView, doCommandBy selector: Selector) -> Bool {
@@ -158,27 +243,48 @@ final class CommandBarPanel: NSPanel, NSTextFieldDelegate, NSTableViewDataSource
         return true
     }
 
+    /// Goes to the next row the user can choose. Headers and commands that are off are skipped.
     private func moveSelection(by offset: Int) {
-        guard !suggestions.isEmpty else { return }
-        let row = min(max(0, tableView.selectedRow + offset), suggestions.count - 1)
-        tableView.selectRowIndexes([row], byExtendingSelection: false)
-        tableView.scrollRowToVisible(row)
+        var row = tableView.selectedRow + offset
+        while rows.indices.contains(row) {
+            if Self.isSelectable(rows[row]) {
+                tableView.selectRowIndexes([row], byExtendingSelection: false)
+                // Show the header above the first row of a section too.
+                tableView.scrollRowToVisible(offset < 0 && row > 0 ? row - 1 : row)
+                tableView.scrollRowToVisible(row)
+                return
+            }
+            row += offset
+        }
+    }
+
+    /// Headers and menu commands that are off cannot be chosen.
+    private static func isSelectable(_ row: Row) -> Bool {
+        switch row {
+        case .header: false
+        case .item(.command(_, _, _, _, let isEnabled)): isEnabled
+        case .item: true
+        }
+    }
+
+    private func suggestion(at row: Int) -> Suggestion? {
+        guard rows.indices.contains(row), Self.isSelectable(rows[row]), case .item(let suggestion) = rows[row] else { return nil }
+        return suggestion
     }
 
     @objc private func submit() {
-        let row = tableView.selectedRow
         let text = field.stringValue
-        // Rows can be one keystroke old; with no rows, go to the typed text directly.
-        let choice: Suggestion? = suggestions.indices.contains(row)
-            ? suggestions[row]
-            : InputClassifier.url(for: text, searchURL: Defaults.searchURL).map(Suggestion.typed)
-        choose(choice)
+        if let choice = suggestion(at: tableView.selectedRow) {
+            choose(choice)
+        } else if mode == .open {
+            // Rows can be one keystroke old; with no rows, go to the typed text directly.
+            choose(InputClassifier.url(for: text, searchURL: Defaults.searchURL).map(Suggestion.typed))
+        }
     }
 
     @objc private func rowClicked() {
-        let row = tableView.clickedRow
-        guard suggestions.indices.contains(row) else { return }
-        choose(suggestions[row])
+        guard let choice = suggestion(at: tableView.clickedRow) else { return }
+        choose(choice)
     }
 
     private func choose(_ choice: Suggestion?) {
@@ -213,6 +319,9 @@ private final class SuggestionCell: NSTableCellView {
     required init?(coder: NSCoder) { fatalError("init(coder:) is not used") }
 
     func configure(_ suggestion: SuggestionRanker.Suggestion) {
+        // Cells are reused: only a command that is off is gray.
+        title.textColor = .labelColor
+        detail.textColor = .secondaryLabelColor
         switch suggestion {
         case .typed(let url):
             let isSearch = url.absoluteString.hasPrefix(Defaults.searchURL.absoluteString)
@@ -231,6 +340,24 @@ private final class SuggestionCell: NSTableCellView {
                 ?? NSImage(systemSymbolName: "clock", accessibilityDescription: nil)
             title.stringValue = historyTitle.isEmpty ? url.absoluteString : historyTitle
             detail.stringValue = url.host() ?? ""
+        case .bookmark(_, let bookmarkTitle, let url):
+            icon.image = FaviconStore.shared.cachedIcon(for: url)
+                ?? NSImage(systemSymbolName: "bookmark", accessibilityDescription: nil)
+            title.stringValue = bookmarkTitle.isEmpty ? url.absoluteString : bookmarkTitle
+            detail.stringValue = url.host() ?? ""
+        case .visit(let visitTitle, let url, let lastVisit):
+            icon.image = FaviconStore.shared.cachedIcon(for: url)
+                ?? NSImage(systemSymbolName: "clock", accessibilityDescription: nil)
+            title.stringValue = visitTitle.isEmpty ? url.absoluteString : visitTitle
+            detail.stringValue = lastVisit.formatted(date: .omitted, time: .shortened)
+        case .command(_, let commandTitle, _, let shortcut, let isEnabled):
+            icon.image = NSImage(systemSymbolName: "command", accessibilityDescription: nil)
+            title.stringValue = commandTitle
+            detail.stringValue = shortcut
+            if !isEnabled {
+                title.textColor = .tertiaryLabelColor
+                detail.textColor = .tertiaryLabelColor
+            }
         }
         setAccessibilityLabel("\(title.stringValue), \(detail.stringValue)")
         needsLayout = true
@@ -243,5 +370,34 @@ private final class SuggestionCell: NSTableCellView {
         let detailWidth = min(220, bounds.width * 0.35)
         detail.frame = NSRect(x: bounds.maxX - detailWidth - 12, y: midY - 8, width: detailWidth, height: 16)
         title.frame = NSRect(x: 38, y: midY - 9, width: detail.frame.minX - 46, height: 18)
+    }
+}
+
+/// A section header in a list: "Today", "Open Tabs".
+@MainActor
+private final class HeaderCell: NSTableCellView {
+    static let identifier = NSUserInterfaceItemIdentifier("Header")
+    private let label = NSTextField(labelWithString: "")
+
+    init() {
+        super.init(frame: .zero)
+        identifier = Self.identifier
+        label.font = .systemFont(ofSize: 12, weight: .semibold)
+        label.textColor = .secondaryLabelColor
+        addSubview(label)
+    }
+
+    @available(*, unavailable)
+    required init?(coder: NSCoder) { fatalError("init(coder:) is not used") }
+
+    func configure(_ title: String) {
+        label.stringValue = title
+        setAccessibilityLabel(title)
+        needsLayout = true
+    }
+
+    override func layout() {
+        super.layout()
+        label.frame = NSRect(x: 12, y: 4, width: bounds.width - 24, height: 16)
     }
 }

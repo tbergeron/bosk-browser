@@ -52,6 +52,8 @@ enum Defaults {
     static let contentInset: CGFloat = 8
     static let contentCornerRadius: CGFloat = 10
     static let commandBarWidth: CGFloat = 640
+    /// The command bar lists scroll after this many rows.
+    static let commandBarMaxVisibleRows = 10
     static let sidebarAnimationDuration: TimeInterval = 0.28
 }
 

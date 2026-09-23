@@ -1,6 +1,6 @@
 name: Bosk
 options:
-  bundleIdPrefix: com.tommybergeron
+  bundleIdPrefix: com.brainpad
   deploymentTarget:
     macOS: "26.0"
   createIntermediateGroups: true
@@ -57,7 +57,7 @@ targets:
           NSAllowsArbitraryLoadsInWebContent: true
     settings:
       base:
-        PRODUCT_BUNDLE_IDENTIFIER: com.tommybergeron.Bosk
+        PRODUCT_BUNDLE_IDENTIFIER: com.brainpad.bosk
         # The public half of the update signing key (the private half is in the keychain).
         SPARKLE_PUBLIC_KEY: "g8L9wznByLwva7s4Of5lXw63TMfPM9zjeDpb0/L96qI="
         # Empty in development builds, so they never check for updates; scripts/release.sh sets it.
@@ -72,5 +72,5 @@ targets:
         # Debug builds are a separate app for macOS: their own settings, cookies and
         # website data, so development never changes the data of the installed app.
         Debug:
-          PRODUCT_BUNDLE_IDENTIFIER: com.tommybergeron.Bosk.debug
+          PRODUCT_BUNDLE_IDENTIFIER: com.brainpad.bosk.debug
     scheme: {}

@@ -30,10 +30,31 @@ Then open http://localhost:8765 in Bosk.
 | Video call (for example meet.google.com) | Camera and mic work; the tab does not sleep during the call | Not tested |
 | Full-screen YouTube video | Full screen enters and exits | Not tested |
 | Cmd+F on a long page | Find bar; Return and Shift+Return go to the next and previous match; Esc closes | Not tested by a person |
-| Cmd+P | Print panel with the page | Not tested |
+| File > Print… (no shortcut: Cmd+P is Search Commands) | Print panel with the page | Not tested |
 | Cmd-click a link | Opens in a background tab below the current tab | Not tested |
 | Command bar: type a few letters of a visited site | The first row is that site ("Switch to Tab" if it is open) | Yes ("git" → GitHub, Switch to Tab) |
 | Command bar: type an address and press Return | The page opens | **Not tested with a real key press** (background test tools cannot press Return) |
+| Cmd+Shift+A (Search Tabs) | The command bar opens with every open tab under "Open Tabs"; typing filters; Return switches to the tab, also in another window | List shows: yes. Return and a second window: not tested |
+| Cmd+Y (Show All History) | The command bar opens with visited pages under day headers ("Today", …), newest first, with times; typing filters; Up and Down skip the headers | List, header, times, filter: yes. Arrow keys: not tested |
+| History list: right-click a row > Remove from History | The row goes away | Not tested |
+| History > Clear History… | Asks first; after that, Cmd+Y shows no rows | Not tested |
+| Cmd+Shift+B on a web page | The page is in the Bookmarks menu; the menu item now says "Remove Bookmark". After a relaunch, the bookmark is still there | Menu and title: yes. Relaunch: not tested |
+| Cmd+Option+B (Show Bookmarks) | The command bar lists the bookmarks under "Bookmarks"; Return opens one in a new tab; right-click > Remove Bookmark removes it | List shows: yes. Return and remove: not tested |
+| Cmd+T, type part of a bookmark's title | The bookmark row shows above history rows | Not tested (unit test covers the order) |
+| A list with more than 10 rows | The list scrolls; the selected row stays visible | Not tested |
+| Esc in the command bar | The bar closes | Yes (real key press, Search Commands and Cmd+T bars) |
+| Bosk > About Bosk | Settings opens on the About pane, with the new shortcuts in the list | Yes |
+| Cmd+P (Search Commands) | The command bar lists every menu bar item under its menu name, with its shortcut; no Undo, Redo, Cut, Copy, Paste, Select All | Yes (real key press) |
+| Search Commands: type "new window", Return | A new window opens | Yes (row click and Return) |
+| Search Commands: type "new tab", Return | The new-tab bar opens | Yes |
+| Search Commands: an item that is off (Window > Remove Window from Set) | The row is gray; it cannot be chosen | Gray: yes. Choosing it: not tested |
+| Search Commands: type "bookmark" on a page with a bookmark | "Remove Bookmark" and the bookmark itself show under "Bookmarks" | Yes |
+| Search Commands: "tab 2" with two or more tabs | Tab 2 is selected | Not tested |
+| Remove Bookmark (menu, Cmd+Shift+B, Search Commands) | Asks first; Cancel keeps the bookmark; Remove Bookmark removes it | From Search Commands: yes. Menu and Cmd+Shift+B: not tested (same action) |
+| Close Window (menu, Cmd+Shift+W, close button, Search Commands) with tabs | Asks first; Cancel keeps the window open | From Search Commands: yes. Others: not tested (same windowShouldClose) |
+| Close Window with no tabs, or only pinned tabs | Closes with no question | Not tested |
+| Quit with windows open | No question; the session keeps the tabs | Not tested |
+| Clear History… from Search Commands | Asks first; Cancel keeps history | Yes |
 
 ## Extensions (M6)
 

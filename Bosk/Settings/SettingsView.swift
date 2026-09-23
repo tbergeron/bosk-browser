@@ -296,11 +296,15 @@ private struct AboutPane: View {
 
     /// Only shortcuts that are in the main menu (MainMenu.swift).
     private let shortcuts: [(String, String)] = [
+        ("Search commands", "⌘P"),
         ("Address", "⌘L"),
         ("New, close, reopen tab", "⌘T  ⌘W  ⇧⌘T"),
         ("Next and previous tab", "⌃⇥  ⌃⇧⇥"),
         ("Go to tab 1 to 8, last tab", "⌘1 … ⌘9"),
         ("Pin or unpin tab", "⌘D"),
+        ("Search tabs", "⇧⌘A"),
+        ("Show history", "⌘Y"),
+        ("Bookmark page, show bookmarks", "⇧⌘B  ⌥⌘B"),
         ("Fold the sidebar", "⌘S"),
         ("Find in page", "⌘F"),
         ("Back and forward", "⌘[  ⌘]"),
