@@ -78,3 +78,4 @@ Then open http://localhost:8765 in Bosk.
 | Extensions > … > Remove | The extension is gone, also after relaunch | Not tested |
 | About > Send Feedback | A GitHub new-issue page opens with the Bosk and macOS versions in the text | Not tested |
 | About > Check now | Off in builds without a Sparkle feed ("Not set up in this build") | Yes (Debug build) |
+| Bosk > Check for Updates… | Off (gray) in builds without a Sparkle feed. About Bosk, Settings…, File > New Window and Close Tab stay on | Yes (Debug build; the item cannot be pressed, the others can) |

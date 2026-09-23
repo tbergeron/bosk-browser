@@ -3,7 +3,7 @@ import BoskCore
 
 @main
 @MainActor
-final class AppDelegate: NSObject, NSApplicationDelegate {
+final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
     private var windowControllers: [BrowserWindowController] = []
 
     static func main() {
