@@ -137,6 +137,17 @@ final class ExtensionActionsView: NSView {
         ExtensionManager.shared.contexts[id]?.performAction(for: currentTab())
     }
 
+    /// From the extensions list: the footer items close the list, then do their work.
+    func openWebStore() {
+        listPopover.close()
+        (NSApp.delegate as? AppDelegate)?.application(NSApp, open: [URL(string: "https://chromewebstore.google.com")!])
+    }
+
+    func manageExtensions() {
+        listPopover.close()
+        SettingsWindowController.shared.show(pane: .extensions)
+    }
+
     @objc private func showList() {
         if listPopover.isShown { return listPopover.close() }
         listPopover.contentViewController = ExtensionsList(bar: self)
@@ -223,10 +234,34 @@ private final class ExtensionsList: NSViewController {
         for context in ExtensionManager.shared.loadedContexts {
             stack.addArrangedSubview(row(for: context))
         }
+        let separator = NSBox()
+        separator.boxType = .separator
+        separator.widthAnchor.constraint(equalToConstant: Self.rowWidth).isActive = true
+        stack.addArrangedSubview(separator)
+        stack.addArrangedSubview(footerRow("Chrome Web Store\u{2026}", symbol: "storefront", action: #selector(openStore)))
+        stack.addArrangedSubview(footerRow("Manage Extensions\u{2026}", symbol: "gearshape", action: #selector(manage)))
         // The popover takes this size. Without it, the popover is narrower than the rows
         // and they go past the left edge.
         preferredContentSize = stack.fittingSize
     }
+
+    /// Icon, name and pin, with the gaps between them.
+    private static let rowWidth: CGFloat = 18 + 210 + 24 + 2 * 8
+
+    private func footerRow(_ title: String, symbol: String, action: Selector) -> NSView {
+        let button = NSButton(title: title, image: NSImage(systemSymbolName: symbol, accessibilityDescription: nil)!,
+                              target: self, action: action)
+        button.isBordered = false
+        button.imagePosition = .imageLeading
+        button.imageHugsTitle = true
+        button.alignment = .left
+        button.widthAnchor.constraint(equalToConstant: Self.rowWidth).isActive = true
+        button.heightAnchor.constraint(equalToConstant: 28).isActive = true
+        return button
+    }
+
+    @objc private func openStore() { bar?.openWebStore() }
+    @objc private func manage() { bar?.manageExtensions() }
 
     private func row(for context: WKWebExtensionContext) -> NSView {
         let id = context.uniqueIdentifier

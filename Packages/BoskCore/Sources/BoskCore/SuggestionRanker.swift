@@ -132,12 +132,13 @@ public enum SuggestionRanker {
             .map { .bookmark(id: $0.id, title: $0.title, url: $0.url) }
     }
 
-    /// Menu bar items, in menu order. The words can match the title or the menu name,
-    /// so "history" also finds Back and Forward. Items that are off stay in the list.
+    /// Menu bar items, in menu order. The words match the title only, not the menu name:
+    /// "history" finds Show All History, not every item in the History menu.
+    /// Items that are off stay in the list.
     public static func commandRows(for query: String, commands: [MenuCommand]) -> [Suggestion] {
         let words = listWords(query)
         return commands.enumerated()
-            .filter { matches(words, title: "\($0.element.title) \($0.element.menu)", url: nil) }
+            .filter { matches(words, title: $0.element.title, url: nil) }
             .map { .command(index: $0.offset, title: $0.element.title, menu: $0.element.menu,
                             shortcut: $0.element.shortcut, isEnabled: $0.element.isEnabled) }
     }

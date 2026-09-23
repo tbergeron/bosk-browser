@@ -141,6 +141,7 @@ struct SuggestionRankerTests {
         .init(title: "New Window", menu: "File", shortcut: "⌘N", isEnabled: true),
         .init(title: "Bookmark This Page", menu: "Bookmarks", shortcut: "⇧⌘B", isEnabled: false),
         .init(title: "Back", menu: "History", shortcut: "⌘[", isEnabled: true),
+        .init(title: "Show All History", menu: "History", shortcut: "⌘Y", isEnabled: true),
     ]
 
     func commandTitles(_ query: String) -> [String] {
@@ -154,14 +155,14 @@ struct SuggestionRankerTests {
         #expect(commandTitles("new window") == ["New Window"])
     }
 
-    @Test("The menu name matches too: the user looks for a command by its menu")
-    func commandMatchesMenu() {
-        #expect(commandTitles("history") == ["Back"])
+    @Test("Only the title matches, not the menu name: \"history\" must not list every item of the History menu")
+    func commandIgnoresMenuName() {
+        #expect(commandTitles("history") == ["Show All History"])
     }
 
     @Test("Empty text lists every command in menu order, so the user can browse the menu bar")
     func commandListAll() {
-        #expect(commandTitles("") == ["New Tab", "New Window", "Bookmark This Page", "Back"])
+        #expect(commandTitles("") == ["New Tab", "New Window", "Bookmark This Page", "Back", "Show All History"])
     }
 
     @Test("A command that is off stays in the list, marked off, and keeps its index into the menu items")
