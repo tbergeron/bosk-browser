@@ -20,13 +20,14 @@ These steps need your Apple Developer account and your keychain, so they are not
    ```bash
    build/SourcePackages/artifacts/sparkle/Sparkle/bin/generate_keys
    ```
-4. **Feed URL.** Choose where `appcast.xml` will be served (for example GitHub Pages).
-   In `scripts/release.sh`, replace `OWNER` in the download URL with your GitHub user or organization.
+4. **GitHub.** Create the repository `tommybergeron/bosk` and turn on GitHub Pages.
+   The DMGs go to GitHub Releases, and the update feed is
+   `https://tommybergeron.github.io/bosk/appcast.xml` (the default in `scripts/release.sh`).
 
 ## Each release
 
 ```bash
-DEVELOPER_ID="Developer ID Application: Your Name (TEAMID)" NOTARY_PROFILE=bosk-notary SPARKLE_FEED_URL=https://… SPARKLE_PUBLIC_KEY=… scripts/release.sh 0.2.0
+DEVELOPER_ID="Developer ID Application: Your Name (TEAMID)" NOTARY_PROFILE=bosk-notary SPARKLE_PUBLIC_KEY=… scripts/release.sh 0.2.0
 ```
 
 The script:
@@ -37,7 +38,8 @@ The script:
 5. makes, signs, notarizes and staples the DMG;
 6. updates `appcast.xml`.
 
-Then upload the DMG to a GitHub release `v<version>`, and publish `appcast.xml` at the feed URL.
+Then upload the DMG to the GitHub release `v<version>` of tommybergeron/bosk, and publish
+`appcast.xml` on GitHub Pages.
 
 ## Check before publishing
 
