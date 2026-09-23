@@ -28,8 +28,11 @@ These steps need your Apple Developer account and your keychain, so they are not
 
 ## Each release
 
+Publishing needs the GitHub CLI, one time: `brew install gh`, then `gh auth login`.
+Commit and push first: `--publish` refuses to run when the code on GitHub is not the code you build.
+
 ```bash
-DEVELOPER_ID="Developer ID Application: Your Name (TEAMID)" NOTARY_PROFILE=bosk-notary scripts/release.sh 0.2.0
+DEVELOPER_ID="Developer ID Application: Your Name (TEAMID)" NOTARY_PROFILE=bosk-notary scripts/release.sh 0.2.0 --publish
 ```
 
 The script:
@@ -38,10 +41,12 @@ The script:
 3. signs with Developer ID and the hardened runtime, then checks the signature;
 4. notarizes and staples the app;
 5. makes, signs, notarizes and staples the DMG;
-6. updates `appcast.xml`.
+6. updates `appcast.xml`;
+7. with `--publish`: creates the GitHub release `v<version>` with the DMG and `appcast.xml`,
+   with notes made from the commits, and marks it as the latest release.
 
-Then create the GitHub release `v<version>` of tbergeron/bosk-browser, and attach both the DMG
-and `appcast.xml`. Mark it as the latest release, so the feed address points to it.
+Without `--publish`, create the GitHub release `v<version>` yourself and attach both files.
+Mark it as the latest release, so the feed address points to it.
 
 ## Check before publishing
 
