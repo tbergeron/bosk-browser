@@ -18,6 +18,9 @@ final class SidebarView: NSView, NSTableViewDataSource, NSTableViewDelegate {
     private let scrollView = NSScrollView()
     private let tableView = NSTableView()
     private let foldButton = NSButton()
+    /// Left of the fold button when Sparkle found an update. See Updater.
+    private let updateButton = NSButton(title: "Update available", target: nil, action: nil)
+    private let dismissUpdateButton = NSButton()
     /// Folded: a narrow strip of icons.
     private(set) var isCompact = false
 
@@ -36,6 +39,24 @@ final class SidebarView: NSView, NSTableViewDataSource, NSTableViewDelegate {
         foldButton.action = #selector(foldClicked)
         foldButton.toolTip = "Fold Sidebar (⌘S)"
         addSubview(foldButton)
+
+        updateButton.bezelStyle = .accessoryBarAction
+        updateButton.controlSize = .small
+        updateButton.target = self
+        updateButton.action = #selector(updateClicked)
+        updateButton.toolTip = "Show the update"
+        addSubview(updateButton)
+        dismissUpdateButton.image = NSImage(systemSymbolName: "xmark", accessibilityDescription: "Dismiss Update")
+        dismissUpdateButton.symbolConfiguration = .init(pointSize: 10, weight: .semibold)
+        dismissUpdateButton.isBordered = false
+        dismissUpdateButton.contentTintColor = .secondaryLabelColor
+        dismissUpdateButton.target = self
+        dismissUpdateButton.action = #selector(dismissUpdateClicked)
+        dismissUpdateButton.toolTip = "Remind me in 24 hours"
+        addSubview(dismissUpdateButton)
+        NotificationCenter.default.addObserver(forName: Updater.updateButtonDidChange, object: nil, queue: .main) { [weak self] _ in
+            MainActor.assumeIsolated { self?.needsLayout = true }
+        }
 
         pinnedGrid.onSelect = { [weak self] tab in self?.store.select(tab) }
         pinnedGrid.onUnpin = { [weak self] tab in self?.store.unpin(tab) }
@@ -122,6 +143,7 @@ final class SidebarView: NSView, NSTableViewDataSource, NSTableViewDelegate {
         foldButton.frame = isCompact
             ? NSRect(x: bounds.midX - 14, y: Defaults.sidebarHeaderHeight - 6, width: 28, height: 28)
             : NSRect(x: bounds.maxX - 38, y: 8, width: 28, height: 28)
+        layoutUpdateButton()
         var y = Defaults.sidebarHeaderHeight + (isCompact ? 28 : 0)
         let gridWidth = bounds.width - padding * 2
         let gridHeight = pinnedGrid.height(forWidth: gridWidth)
@@ -129,6 +151,21 @@ final class SidebarView: NSView, NSTableViewDataSource, NSTableViewDelegate {
         if gridHeight > 0 { y += gridHeight + 12 }
         scrollView.frame = NSRect(x: 0, y: y, width: bounds.width, height: max(0, bounds.height - y))
         tableView.tableColumns.first?.width = bounds.width
+    }
+
+    /// Not in the folded strip, and not when the sidebar is too narrow to keep it clear of the window buttons.
+    private func layoutUpdateButton() {
+        let dismissWidth: CGFloat = 16
+        let width = updateButton.fittingSize.width
+        let x = foldButton.frame.minX - dismissWidth - width
+        let isVisible = Updater.showsUpdateButton && !isCompact && x >= Defaults.stripWidth
+        updateButton.isHidden = !isVisible
+        dismissUpdateButton.isHidden = !isVisible
+        guard isVisible else { return }
+        let height = updateButton.fittingSize.height
+        updateButton.frame = NSRect(x: x, y: foldButton.frame.midY - height / 2, width: width, height: height)
+        dismissUpdateButton.frame = NSRect(x: updateButton.frame.maxX, y: foldButton.frame.midY - 8,
+                                           width: dismissWidth, height: 16)
     }
 
     // MARK: Table
@@ -222,6 +259,8 @@ final class SidebarView: NSView, NSTableViewDataSource, NSTableViewDelegate {
     }
 
     @objc private func foldClicked() { onToggleFold?() }
+    @objc private func updateClicked() { Updater.checkForUpdates() }
+    @objc private func dismissUpdateClicked() { Updater.dismissUpdateButton() }
 }
 
 extension SidebarView: NSMenuDelegate {

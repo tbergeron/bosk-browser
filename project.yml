@@ -42,6 +42,8 @@ targets:
         # Sparkle updates. Both values come from build settings; see scripts/release.sh.
         SUFeedURL: $(SPARKLE_FEED_URL)
         SUPublicEDKey: $(SPARKLE_PUBLIC_KEY)
+        # Check once a day without Sparkle's first-run question; the sidebar shows found updates.
+        SUEnableAutomaticChecks: true
         # Bosk can be the default browser: it opens web links and HTML files.
         CFBundleURLTypes:
           - CFBundleURLName: Web site URL
