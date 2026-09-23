@@ -1,0 +1,65 @@
+name: Bosk
+options:
+  bundleIdPrefix: com.tommybergeron
+  deploymentTarget:
+    macOS: "26.0"
+  createIntermediateGroups: true
+
+packages:
+  BoskCore:
+    path: Packages/BoskCore
+  Sparkle:
+    url: https://github.com/sparkle-project/Sparkle
+    majorVersion: 2.6.0
+
+settings:
+  base:
+    SWIFT_VERSION: "6.0"
+    MARKETING_VERSION: "0.1.0"
+    CURRENT_PROJECT_VERSION: "1"
+
+targets:
+  Bosk:
+    type: application
+    platform: macOS
+    sources:
+      - Bosk
+    dependencies:
+      - package: BoskCore
+      - package: Sparkle
+    info:
+      path: Bosk/Resources/Info.plist
+      properties:
+        CFBundleDisplayName: Bosk
+        LSApplicationCategoryType: public.app-category.productivity
+        NSPrincipalClass: NSApplication
+        NSCameraUsageDescription: A website you use wants to use the camera.
+        NSMicrophoneUsageDescription: A website you use wants to use the microphone.
+        NSLocationUsageDescription: A website you use wants to know your location.
+        LSMinimumSystemVersion: $(MACOSX_DEPLOYMENT_TARGET)
+        # Sparkle updates. Both values come from build settings; see scripts/release.sh.
+        SUFeedURL: $(SPARKLE_FEED_URL)
+        SUPublicEDKey: $(SPARKLE_PUBLIC_KEY)
+        # Bosk can be the default browser: it opens web links and HTML files.
+        CFBundleURLTypes:
+          - CFBundleURLName: Web site URL
+            CFBundleURLSchemes: [http, https]
+        CFBundleDocumentTypes:
+          - CFBundleTypeName: HTML document
+            CFBundleTypeRole: Viewer
+            LSItemContentTypes: [public.html, public.xhtml]
+        # A browser must load plain http:// pages. This applies to web views only.
+        NSAppTransportSecurity:
+          NSAllowsArbitraryLoadsInWebContent: true
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.tommybergeron.Bosk
+        # Set these before the first release (see docs/release.md). Empty = no update checks.
+        SPARKLE_FEED_URL: ""
+        SPARKLE_PUBLIC_KEY: ""
+        ENABLE_HARDENED_RUNTIME: YES
+        CODE_SIGN_ENTITLEMENTS: Bosk/Resources/Bosk.entitlements
+        # Local builds are ad-hoc signed. scripts/release.sh signs with Developer ID.
+        CODE_SIGN_IDENTITY: "-"
+        CODE_SIGN_STYLE: Manual
+    scheme: {}
