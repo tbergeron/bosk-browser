@@ -13,7 +13,7 @@ actor HistoryStore {
     private var titleStatement: OpaquePointer?
 
     private init() {
-        let directory = URL.applicationSupportDirectory.appending(path: "Bosk", directoryHint: .isDirectory)
+        let directory = Defaults.dataDirectory
         try? FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
         let path = directory.appending(path: "history.sqlite").path
         guard sqlite3_open(path, &db) == SQLITE_OK else {

@@ -32,7 +32,7 @@ final class ExtensionManager: NSObject {
     /// All windows. AppDelegate sets it.
     var windowsProvider: (() -> [BrowserWindowController])?
 
-    private let directory = URL.applicationSupportDirectory.appending(path: "Bosk/Extensions", directoryHint: .isDirectory)
+    private let directory = Defaults.dataDirectory.appending(path: "Extensions", directoryHint: .isDirectory)
     private var registryURL: URL { directory.appending(path: "extensions.json") }
 
     override private init() {

@@ -68,4 +68,9 @@ targets:
         # Local builds are ad-hoc signed. scripts/release.sh signs with Developer ID.
         CODE_SIGN_IDENTITY: "-"
         CODE_SIGN_STYLE: Manual
+      configs:
+        # Debug builds are a separate app for macOS: their own settings, cookies and
+        # website data, so development never changes the data of the installed app.
+        Debug:
+          PRODUCT_BUNDLE_IDENTIFIER: com.tommybergeron.Bosk.debug
     scheme: {}

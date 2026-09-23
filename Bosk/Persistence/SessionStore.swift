@@ -13,7 +13,7 @@ final class SessionStore {
     private var pendingSave: Task<Void, Never>?
 
     private init() {
-        let directory = URL.applicationSupportDirectory.appending(path: "Bosk", directoryHint: .isDirectory)
+        let directory = Defaults.dataDirectory
         try? FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
         fileURL = directory.appending(path: "session.json")
     }

@@ -6,6 +6,14 @@ enum Defaults {
     static let initialWindowSize = CGSize(width: 1280, height: 820)
     static let minimumWindowSize = CGSize(width: 640, height: 400)
 
+    /// Session, history and extensions. Debug builds use their own folder (and their own
+    /// bundle ID, see project.yml), so development never changes the data of the installed app.
+    #if DEBUG
+    static let dataDirectory = URL.applicationSupportDirectory.appending(path: "Bosk Debug", directoryHint: .isDirectory)
+    #else
+    static let dataDirectory = URL.applicationSupportDirectory.appending(path: "Bosk", directoryHint: .isDirectory)
+    #endif
+
     static let searchURL = URL(string: "https://www.google.com/search")!
     static let projectURL = URL(string: "https://github.com/tbergeron/bosk-browser")!
 
