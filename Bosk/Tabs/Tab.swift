@@ -15,6 +15,8 @@ final class Tab: NSObject {
     /// Set when this tab is this window's copy of a pinned entry.
     var pinnedEntryID: UUID?
     var isPinned: Bool { pinnedEntryID != nil }
+    /// The tab group of a normal tab. `TabStore` keeps the tabs of a group next to each other.
+    var groupID: UUID?
 
     private(set) var url: URL?
     private(set) var title: String

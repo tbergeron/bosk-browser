@@ -116,6 +116,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
         store.transfer(tab, to: controller.store)
     }
 
+    /// Moves a tab group, with its pages, to a new window down and to the right of `store`'s window.
+    func moveGroupToNewWindow(_ id: UUID, from store: TabStore) {
+        guard let frame = store.window?.frame else { return }
+        let controller = openWindow(showCommandBar: false, frame: frame.offsetBy(dx: 24, dy: -24))
+        store.transferGroup(id, to: controller.store)
+    }
+
     func windowControllerDidClose(_ controller: BrowserWindowController) {
         // On quit, windows close after the session is saved; keep them in the session.
         guard !isTerminating else { return }

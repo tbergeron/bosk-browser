@@ -17,6 +17,8 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate {
     private let sidebar: SidebarView
     private let rootView: RootView
     private lazy var commandBar = CommandBarPanel()
+    /// "New Tab in Group": the group of the tab the open command bar makes.
+    private var newTabGroupID: UUID?
 
     init(restoring state: WindowState? = nil) {
         sidebar = SidebarView(store: store)
@@ -39,6 +41,7 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate {
 
         topBar.onAddressClick = { [weak self] in self?.openLocation(nil) }
         sidebar.onNewTab = { [weak self] in self?.showCommandBar(target: .newTab) }
+        sidebar.onNewTabInGroup = { [weak self] id in self?.showCommandBar(target: .newTab, group: id) }
         sidebar.onToggleFold = { [weak self] in self?.toggleSidebar(nil) }
         rootView.onDragFold = { [weak self] folded in self?.setSidebarFolded(folded, animated: true) }
         store.delegate = self
@@ -75,8 +78,10 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate {
 
     // MARK: Command bar
 
-    func showCommandBar(target: CommandBarPanel.Target, mode: CommandBarPanel.Mode = .open) {
+    /// - Parameter group: A new tab from the bar goes at the end of this group.
+    func showCommandBar(target: CommandBarPanel.Target, mode: CommandBarPanel.Mode = .open, group: UUID? = nil) {
         guard let window else { return }
+        newTabGroupID = group
         let text = target == .currentTab ? (store.selectedTab?.url?.absoluteString ?? "") : ""
         // Read the menu bar while this window is still key, so each item's on/off state is for this window.
         let menuItems = mode == .commands ? MainMenu.commands() : []
@@ -163,7 +168,7 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate {
             if target == .currentTab, let tab = store.selectedTab {
                 tab.load(url)
             } else {
-                store.newTab(url: url)
+                store.newTab(url: url, inGroup: newTabGroupID)
             }
             focusWebView()
         case .openTab(let id, _, _):
@@ -299,6 +304,14 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate {
         guard let tab = store.selectedTab else { return }
         if tab.isPinned { store.unpin(tab) } else { store.pin(tab) }
     }
+    @objc func addTabToNewGroup(_ sender: Any?) {
+        guard let tab = store.selectedTab, !tab.isPinned else { return }
+        sidebar.addToNewGroup(tab)
+    }
+    @objc func removeTabFromGroup(_ sender: Any?) {
+        guard let tab = store.selectedTab else { return }
+        store.removeFromGroup(tab)
+    }
 
     func windowDidMove(_ notification: Notification) { SessionStore.shared.setNeedsSave() }
     func windowDidBecomeKey(_ notification: Notification) { ExtensionManager.shared.controller.didFocusWindow(self) }
@@ -337,8 +350,14 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate {
 
 extension BrowserWindowController: NSMenuItemValidation {
     /// Only "Bookmark This Page" and "Show Reader" change: their titles say what they will do,
-    /// and they need a web page.
+    /// and they need a web page. The group items need a normal tab (and a group, to remove from).
     func validateMenuItem(_ menuItem: NSMenuItem) -> Bool {
+        if menuItem.action == #selector(addTabToNewGroup(_:)) {
+            return store.selectedTab.map { !$0.isPinned } ?? false
+        }
+        if menuItem.action == #selector(removeTabFromGroup(_:)) {
+            return store.selectedTab?.groupID != nil
+        }
         if menuItem.action == #selector(toggleReader(_:)) {
             let item = store.selectedTab.flatMap(ReaderMode.menuItem)
             menuItem.title = item?.title ?? "Show Reader"

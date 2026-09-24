@@ -75,6 +75,10 @@ enum MainMenu {
         tabsMenu.addItem(item("Previous Tab", #selector(BrowserWindowController.selectPreviousTab(_:)), "{", [.command, .shift], alternate: true))
         tabsMenu.addItem(.separator())
         tabsMenu.addItem(item("Pin or Unpin Tab", #selector(BrowserWindowController.togglePinTab(_:)), "d"))
+        tabsMenu.addItem(withTitle: "Add Tab to New Group", action: #selector(BrowserWindowController.addTabToNewGroup(_:)),
+                         keyEquivalent: "")
+        tabsMenu.addItem(withTitle: "Remove Tab from Group", action: #selector(BrowserWindowController.removeTabFromGroup(_:)),
+                         keyEquivalent: "")
         tabsMenu.addItem(.separator())
         for number in 1...9 {
             let entry = item(number == 9 ? "Last Tab" : "Tab \(number)",

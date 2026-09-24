@@ -8,14 +8,16 @@ struct SessionModelTests {
     @Test("A saved session loads back the same, so no tab is lost on relaunch")
     func roundTrip() throws {
         let pin = PinnedEntry(url: URL(string: "https://mail.google.com")!, title: "Gmail")
+        let group = TabGroup(title: "Work", color: .pink, isFolded: true)
         let session = Session(
             windows: [WindowState(
                 frame: [10, 20, 1280, 820],
                 pinnedTabs: [TabState(id: UUID(), url: pin.url, title: "Inbox", pinnedEntryID: pin.id)],
                 tabs: [TabState(id: UUID(), url: URL(string: "https://x.com")!, title: "X",
-                                sessionState: Data([1, 2, 3]))],
+                                sessionState: Data([1, 2, 3]), groupID: group.id)],
                 selectedTabID: nil,
-                sidebarFolded: true
+                sidebarFolded: true,
+                groups: [group]
             )],
             pinned: [pin]
         )
@@ -32,6 +34,8 @@ struct SessionModelTests {
         #expect(session.windows.first?.tabs.first?.id == id)
         #expect(session.windows.first?.sidebarFolded == nil)
         #expect(session.windows.first?.frame == nil)
+        #expect(session.windows.first?.groups == nil)
+        #expect(session.windows.first?.tabs.first?.groupID == nil)
     }
 }
 

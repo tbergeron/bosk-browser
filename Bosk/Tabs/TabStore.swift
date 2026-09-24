@@ -18,10 +18,13 @@ final class TabStore {
         let title: String
         let sessionState: Data?
         let index: Int
+        let groupID: UUID?
     }
 
     private(set) var pinnedTabs: [Tab] = []
     private(set) var tabs: [Tab] = []
+    /// The tab groups of this window, in no special order; the tab list gives the order.
+    private(set) var groups: [TabGroup] = []
     private(set) var selectedTab: Tab?
     private var closedTabs: [ClosedTab] = []
     weak var delegate: TabStoreDelegate?
@@ -46,12 +49,16 @@ final class TabStore {
         func makeTab(_ saved: TabState) -> Tab {
             let tab = Tab(id: saved.id, url: saved.url, title: saved.title, sessionState: saved.sessionState)
             tab.pinnedEntryID = saved.pinnedEntryID
+            tab.groupID = saved.groupID
             tab.favicon = FaviconStore.shared.cachedIcon(for: saved.url)
             tab.store = self
             return tab
         }
         pinnedTabs = state.pinnedTabs.map(makeTab)
         tabs = state.tabs.map(makeTab)
+        groups = state.groups ?? []
+        let groupIDs = Set(groups.map(\.id))
+        for tab in tabs where tab.groupID.map({ !groupIDs.contains($0) }) ?? false { tab.groupID = nil }
         syncPinnedTabs()
         let selected = allTabs.first { $0.id == state.selectedTabID } ?? tabs.last ?? pinnedTabs.first
         if let selected { select(selected) }
@@ -61,30 +68,31 @@ final class TabStore {
         func state(_ tab: Tab) -> TabState {
             tab.saveSessionState()
             return TabState(id: tab.id, url: tab.url, title: tab.title,
-                            sessionState: tab.sessionState, pinnedEntryID: tab.pinnedEntryID)
+                            sessionState: tab.sessionState, pinnedEntryID: tab.pinnedEntryID, groupID: tab.groupID)
         }
         return WindowState(frame: frame, pinnedTabs: pinnedTabs.map(state), tabs: tabs.map(state),
-                           selectedTabID: selectedTab?.id, sidebarFolded: sidebarFolded)
+                           selectedTabID: selectedTab?.id, sidebarFolded: sidebarFolded, groups: groups)
     }
 
     // MARK: Tabs
 
+    /// - Parameter groupID: The new tab goes at the end of this group; nil puts it at the end of the list.
     @discardableResult
-    func newTab(url: URL?, select: Bool = true) -> Tab {
+    func newTab(url: URL?, select: Bool = true, inGroup groupID: UUID? = nil) -> Tab {
         // A selected tab wakes and loads its URL. A background tab loads when first selected.
         let tab = Tab(url: url)
         tab.favicon = FaviconStore.shared.cachedIcon(for: url)
-        insert(tab, after: nil, select: select)
+        insert(tab, after: groupID.flatMap { id in tabs.last { $0.groupID == id } }, select: select)
         return tab
     }
 
-    /// - Parameter after: The new tab goes below this tab; nil puts it at the end.
+    /// - Parameter after: The new tab goes below this tab, in its group; nil puts it at the end.
     func insert(_ tab: Tab, after: Tab?, select: Bool) {
         tab.store = self
         if let after, let index = tabs.firstIndex(where: { $0 === after }) {
-            tabs.insert(tab, at: index + 1)
+            place(tab, at: index + 1, preferredGroup: after.groupID)
         } else {
-            tabs.append(tab)
+            place(tab, at: tabs.count)
         }
         structureChanged()
         ExtensionManager.shared.didOpen(tab)
@@ -133,7 +141,8 @@ final class TabStore {
             tab.reset(to: entry.url, title: entry.title)
         } else if let index = tabs.firstIndex(where: { $0 === tab }) {
             tab.saveSessionState()
-            closedTabs.append(ClosedTab(url: tab.url, title: tab.title, sessionState: tab.sessionState, index: index))
+            closedTabs.append(ClosedTab(url: tab.url, title: tab.title, sessionState: tab.sessionState,
+                                        index: index, groupID: tab.groupID))
             if closedTabs.count > 20 { closedTabs.removeFirst() }
             tabs.remove(at: index)
             ExtensionManager.shared.didClose(tab)
@@ -175,32 +184,37 @@ final class TabStore {
         let tab = Tab(url: closed.url, title: closed.title, sessionState: closed.sessionState)
         tab.favicon = FaviconStore.shared.cachedIcon(for: closed.url)
         tab.store = self
-        tabs.insert(tab, at: min(closed.index, tabs.count))
+        place(tab, at: closed.index, preferredGroup: closed.groupID)
         structureChanged()
         ExtensionManager.shared.didOpen(tab)
         select(tab)
     }
 
-    func moveTab(_ tab: Tab, to index: Int) {
+    /// - Parameter group: The tab's group after the move. The caller makes sure the group stays in one piece.
+    func moveTab(_ tab: Tab, to index: Int, group: UUID?) {
         guard let from = tabs.firstIndex(where: { $0 === tab }) else { return }
         tabs.remove(at: from)
         tabs.insert(tab, at: min(index, tabs.count))
+        tab.groupID = group
         structureChanged()
         ExtensionManager.shared.didMove(tab, from: pinnedTabs.count + from)
     }
 
-    /// Moves a normal tab to the end of `other`'s list and selects it there. The tab keeps
+    /// Moves a normal tab to `other`'s list and selects it there. The tab keeps
     /// its web view, so the page does not reload.
-    func transfer(_ tab: Tab, to other: TabStore) {
-        guard other !== self, let index = tabs.firstIndex(where: { $0 === tab }) else { return }
+    /// - Parameters:
+    ///   - index: The tab's place in `other`'s list; nil puts it at the end.
+    ///   - group: A group of `other` next to `index` that the tab joins.
+    func transfer(_ tab: Tab, to other: TabStore, at index: Int? = nil, group: UUID? = nil) {
+        guard other !== self, let from = tabs.firstIndex(where: { $0 === tab }) else { return }
         let oldWindow = windowController
-        let allIndex = pinnedTabs.count + index
-        tabs.remove(at: index)
+        let allIndex = pinnedTabs.count + from
+        tabs.remove(at: from)
         structureChanged()
         // This window shows another tab first, so its container lets go of the web view.
         if tab === selectedTab { selectAfterClosing(tab, at: allIndex) }
         tab.store = other
-        other.tabs.append(tab)
+        other.place(tab, at: index ?? other.tabs.count, preferredGroup: group)
         other.structureChanged()
         ExtensionManager.shared.didMove(tab, from: allIndex, in: oldWindow)
         other.select(tab)
@@ -212,6 +226,7 @@ final class TabStore {
     func pin(_ tab: Tab, at index: Int? = nil) {
         guard let from = tabs.firstIndex(where: { $0 === tab }), let url = tab.url else { return }
         tabs.remove(at: from)
+        tab.groupID = nil
         let entry = PinnedStore.shared.pin(url: url, title: tab.title, at: index)
         tab.pinnedEntryID = entry.id
         // `pin` above already called syncPinnedTabs, which made a new tab for this entry.
@@ -224,11 +239,12 @@ final class TabStore {
     }
 
     /// Unpins everywhere. This window keeps the page as a normal tab at the top of the list.
-    func unpin(_ tab: Tab, toIndex index: Int = 0) {
+    /// - Parameter group: A group next to `index` that the tab joins.
+    func unpin(_ tab: Tab, toIndex index: Int = 0, group: UUID? = nil) {
         guard let entryID = tab.pinnedEntryID else { return }
         pinnedTabs.removeAll { $0 === tab }
         tab.pinnedEntryID = nil
-        tabs.insert(tab, at: min(index, tabs.count))
+        place(tab, at: index, preferredGroup: group)
         PinnedStore.shared.unpin(entryID)
         structureChanged()
     }
@@ -251,12 +267,96 @@ final class TabStore {
             if tab === selectedTab {
                 // Another window unpinned it: keep the page here as a normal tab.
                 tab.pinnedEntryID = nil
-                tabs.insert(tab, at: 0)
+                place(tab, at: 0)
             } else {
                 tab.close()
             }
         }
         structureChanged()
+    }
+
+    /// Puts a normal tab in at `index`. It joins a group only where the group stays in one piece.
+    private func place(_ tab: Tab, at index: Int, preferredGroup: UUID? = nil) {
+        let index = min(index, tabs.count)
+        tab.groupID = TabGrouping.groupForInsertion(at: index, groupIDs: tabs.map(\.groupID), preferred: preferredGroup)
+        tabs.insert(tab, at: index)
+    }
+
+    // MARK: Groups
+
+    func group(_ id: UUID) -> TabGroup? { groups.first { $0.id == id } }
+
+    /// Puts one tab in a new group with a color no other group has. The tab leaves its old group first.
+    @discardableResult
+    func addToNewGroup(_ tab: Tab) -> TabGroup? {
+        guard tabs.contains(where: { $0 === tab }) else { return nil }
+        if tab.groupID != nil { removeFromGroup(tab) }
+        let group = TabGroup(color: .firstUnused(in: groups.map(\.color)))
+        groups.append(group)
+        tab.groupID = group.id
+        structureChanged()
+        return group
+    }
+
+    /// Moves a tab to the end of a group.
+    func add(_ tab: Tab, toGroup id: UUID) {
+        guard tab.groupID != id, let from = tabs.firstIndex(where: { $0 === tab }),
+              let last = tabs.lastIndex(where: { $0.groupID == id }) else { return }
+        // The tab leaves its old place first, so a group below it moves up by one.
+        moveTab(tab, to: from < last ? last : last + 1, group: id)
+    }
+
+    /// Moves a tab out of its group, to just below the group.
+    func removeFromGroup(_ tab: Tab) {
+        guard let id = tab.groupID, let last = tabs.lastIndex(where: { $0.groupID == id }) else { return }
+        moveTab(tab, to: last, group: nil)
+    }
+
+    func updateGroup(_ id: UUID, title: String? = nil, color: TabGroupColor? = nil) {
+        guard let index = groups.firstIndex(where: { $0.id == id }) else { return }
+        if let title { groups[index].title = title }
+        if let color { groups[index].color = color }
+        structureChanged()
+    }
+
+    func toggleFold(_ id: UUID) {
+        guard let index = groups.firstIndex(where: { $0.id == id }) else { return }
+        groups[index].isFolded.toggle()
+        structureChanged()
+    }
+
+    /// Removes the group. Its tabs stay where they are.
+    func ungroup(_ id: UUID) {
+        for tab in tabs where tab.groupID == id { tab.groupID = nil }
+        structureChanged()
+    }
+
+    /// Closes all tabs of the group, and so the group.
+    func closeGroup(_ id: UUID) {
+        let members = tabs.filter { $0.groupID == id }
+        guard let first = tabs.firstIndex(where: { $0.groupID == id }),
+              let last = tabs.lastIndex(where: { $0.groupID == id }) else { return }
+        // Select a tab outside the group first, so no tab that is about to close is selected (and woken).
+        if let selectedTab, members.contains(where: { $0 === selectedTab }),
+           let next = tabs[(last + 1)...].first ?? tabs[..<first].last ?? pinnedTabs.first {
+            select(next)
+        }
+        isClosingManyTabs = true
+        for tab in members { close(tab) }
+        isClosingManyTabs = false
+        structureChanged()
+    }
+
+    /// Moves the group and its tabs to the end of `other`'s list. The tabs keep their web views.
+    func transferGroup(_ id: UUID, to other: TabStore) {
+        guard other !== self, let group = group(id) else { return }
+        let members = tabs.filter { $0.groupID == id }
+        let selected = members.first { $0 === selectedTab } ?? members.first
+        for tab in members { transfer(tab, to: other) }
+        other.groups.append(group)
+        for tab in members { tab.groupID = id }
+        other.structureChanged()
+        if let selected { other.select(selected) }
     }
 
     // MARK: Changes
@@ -278,6 +378,8 @@ final class TabStore {
 
     private func structureChanged() {
         guard !isClosingManyTabs else { return }
+        // A group with no tabs is gone.
+        groups.removeAll { group in !tabs.contains { $0.groupID == group.id } }
         delegate?.tabStoreDidChangeTabs(self)
         SessionStore.shared.setNeedsSave()
     }

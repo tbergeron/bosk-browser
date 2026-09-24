@@ -30,14 +30,17 @@ public struct WindowState: Codable, Equatable, Sendable {
     public var tabs: [TabState]
     public var selectedTabID: UUID?
     public var sidebarFolded: Bool?
+    /// The tab groups of this window. Tabs point to them by `groupID`.
+    public var groups: [TabGroup]?
 
     public init(frame: [Double]? = nil, pinnedTabs: [TabState] = [], tabs: [TabState] = [],
-                selectedTabID: UUID? = nil, sidebarFolded: Bool? = nil) {
+                selectedTabID: UUID? = nil, sidebarFolded: Bool? = nil, groups: [TabGroup]? = nil) {
         self.frame = frame
         self.pinnedTabs = pinnedTabs
         self.tabs = tabs
         self.selectedTabID = selectedTabID
         self.sidebarFolded = sidebarFolded
+        self.groups = groups
     }
 }
 
@@ -48,13 +51,16 @@ public struct TabState: Codable, Equatable, Sendable {
     /// WebKit's opaque `interactionState` (back/forward list, scroll position).
     public var sessionState: Data?
     public var pinnedEntryID: UUID?
+    public var groupID: UUID?
 
-    public init(id: UUID, url: URL?, title: String, sessionState: Data? = nil, pinnedEntryID: UUID? = nil) {
+    public init(id: UUID, url: URL?, title: String, sessionState: Data? = nil, pinnedEntryID: UUID? = nil,
+                groupID: UUID? = nil) {
         self.id = id
         self.url = url
         self.title = title
         self.sessionState = sessionState
         self.pinnedEntryID = pinnedEntryID
+        self.groupID = groupID
     }
 }
 

@@ -262,7 +262,7 @@ private final class ExtensionsList: NSViewController {
         stack.addArrangedSubview(title)
         stack.setCustomSpacing(8, after: title)
         for context in ExtensionManager.shared.loadedContexts {
-            stack.addArrangedSubview(row(for: context))
+            stack.addArrangedSubview(HoverRowView(row(for: context)))
         }
         let separator = NSBox()
         separator.boxType = .separator
@@ -290,7 +290,7 @@ private final class ExtensionsList: NSViewController {
         button.alignment = .left
         button.widthAnchor.constraint(equalToConstant: Self.rowWidth).isActive = true
         button.heightAnchor.constraint(equalToConstant: 28).isActive = true
-        return button
+        return HoverRowView(button)
     }
 
     @objc private func openStore() { bar?.openWebStore() }

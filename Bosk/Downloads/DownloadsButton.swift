@@ -52,7 +52,7 @@ private final class DownloadsList: NSViewController {
         stack.spacing = 10
         stack.edgeInsets = NSEdgeInsets(top: 14, left: 16, bottom: 14, right: 16)
         for item in DownloadManager.shared.items.prefix(10) {
-            stack.addArrangedSubview(row(for: item))
+            stack.addArrangedSubview(HoverRowView(row(for: item)))
         }
         if DownloadManager.shared.items.isEmpty {
             stack.addArrangedSubview(NSTextField(labelWithString: "No downloads"))

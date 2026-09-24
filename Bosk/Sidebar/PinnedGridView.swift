@@ -51,7 +51,11 @@ final class PinnedGridView: NSView {
 
     func reload(tabs: [Tab], selected: Tab?) {
         // Reuse tile views; only the count changes.
-        while tiles.count > tabs.count { tiles.removeLast().removeFromSuperview() }
+        while tiles.count > tabs.count {
+            let tile = tiles.removeLast()
+            SidebarTooltip.hide(for: tile)
+            tile.removeFromSuperview()
+        }
         while tiles.count < tabs.count {
             let tile = PinnedTileView()
             addSubview(tile)
@@ -59,6 +63,7 @@ final class PinnedGridView: NSView {
         }
         for (tile, tab) in zip(tiles, tabs) {
             tile.tab = tab
+            tile.isCompact = isCompact
             tile.configure(isCurrent: tab === selected)
             tile.onClick = { [weak self] in self?.onSelect?(tab) }
             tile.menu = menu(for: tab)
@@ -163,6 +168,8 @@ final class PinnedGridView: NSView {
 final class PinnedTileView: NSView, NSDraggingSource {
     weak var tab: Tab?
     var onClick: (() -> Void)?
+    /// In the folded sidebar, the title shows at once on hover (SidebarTooltip).
+    var isCompact = false
     private var mouseDownPoint: NSPoint?
     private let iconLayer = CALayer()
     private var isCurrent = false
@@ -184,7 +191,8 @@ final class PinnedTileView: NSView, NSDraggingSource {
         self.isCurrent = isCurrent
         iconLayer.contents = tab?.favicon ?? NSImage(systemSymbolName: "globe", accessibilityDescription: nil)
         iconLayer.opacity = tab?.isAsleep == true && !isCurrent ? 0.75 : 1
-        toolTip = tab?.displayTitle
+        toolTip = isCompact ? nil : tab?.displayTitle
+        if isCompact, isHovered, let title = tab?.displayTitle { SidebarTooltip.show(title, for: self) }
         setAccessibilityRole(.button)
         setAccessibilityLabel(tab?.displayTitle)
         updateColors()
@@ -236,8 +244,18 @@ final class PinnedTileView: NSView, NSDraggingSource {
                                        owner: self))
     }
 
-    override func mouseEntered(with event: NSEvent) { isHovered = true; updateColors() }
-    override func mouseExited(with event: NSEvent) { isHovered = false; updateColors() }
+    override func mouseEntered(with event: NSEvent) {
+        isHovered = true
+        updateColors()
+        if isCompact, let title = tab?.displayTitle { SidebarTooltip.show(title, for: self) }
+    }
+
+    override func mouseExited(with event: NSEvent) {
+        isHovered = false
+        updateColors()
+        SidebarTooltip.hide(for: self)
+    }
+
     override func mouseDown(with event: NSEvent) {
         mouseDownPoint = event.locationInWindow
     }
