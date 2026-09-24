@@ -21,7 +21,9 @@ final class BoskWindow: NSWindow {
         for view in [close, titlebar, container] {
             view.postsFrameChangedNotifications = true
             NotificationCenter.default.addObserver(forName: NSView.frameDidChangeNotification, object: view, queue: nil) { [weak self] _ in
-                MainActor.assumeIsolated { self?.centerWindowButtons() }
+                // AppKit ignores a button move made while it moves the button (for example in
+                // `_updateButtonPositions`, after each title change), so move them after it.
+                DispatchQueue.main.async { self?.centerWindowButtons() }
             }
         }
     }
