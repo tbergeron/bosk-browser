@@ -4,6 +4,8 @@ import BoskCore
 extension NSPasteboard.PasteboardType {
     /// A tab being dragged in the sidebar. The value is the tab's UUID.
     static let boskTab = NSPasteboard.PasteboardType("app.bosk.tab-id")
+    /// A tab group header being dragged in the tab list. The value is the group's UUID.
+    static let boskTabGroup = NSPasteboard.PasteboardType("app.bosk.tab-group-id")
 }
 
 /// The left sidebar: space for the window buttons, the pinned grid, and the tab list.
@@ -17,12 +19,14 @@ final class SidebarView: NSView, NSTableViewDataSource, NSTableViewDelegate {
 
     let pinnedGrid = PinnedGridView()
     private let scrollView = NSScrollView()
-    private let tableView = NSTableView()
+    private let tableView = SidebarTableView()
     private let foldButton = NSButton()
     /// Folded: a narrow strip of icons.
     private(set) var isCompact = false
     /// The normal tab in a drag from the tab list.
     private var draggedTab: Tab?
+    /// Tabs added to the selection with Cmd+click. With any, the current tab is in the selection too.
+    private var multiSelection: Set<UUID> = []
     /// The table rows: group headers, the visible tabs, and "New Tab". Made in `reloadTabs`.
     private var rows: [SidebarItem] = [.newTab]
     private let groupPopover = NSPopover()
@@ -67,7 +71,11 @@ final class SidebarView: NSView, NSTableViewDataSource, NSTableViewDelegate {
         tableView.menu?.delegate = self
         // "Close Other Tabs" is disabled when there is no other tab.
         tableView.menu?.autoenablesItems = false
-        tableView.registerForDraggedTypes([.boskTab])
+        tableView.registerForDraggedTypes([.boskTab, .boskTabGroup])
+        tableView.canDragRow = { [weak self] row in
+            guard let self, rows.indices.contains(row) else { return false }
+            return rows[row] != .newTab
+        }
         tableView.setDraggingSourceOperationMask(.move, forLocal: true)
         tableView.draggingDestinationFeedbackStyle = .gap
         scrollView.documentView = tableView
@@ -198,7 +206,8 @@ final class SidebarView: NSView, NSTableViewDataSource, NSTableViewDelegate {
         rowView.configure(title: tab.displayTitle, icon: tab.favicon,
                           isCurrent: tab === store.selectedTab, isCompact: isCompact,
                           groupColor: group.map { SidebarColors.group($0.color) },
-                          isLastInGroup: group != nil && self.tab(atRow: row + 1)?.groupID != group?.id)
+                          isLastInGroup: group != nil && self.tab(atRow: row + 1)?.groupID != group?.id,
+                          isMultiSelected: multiSelection.contains(tab.id))
     }
 
     // MARK: Drag and drop
@@ -216,16 +225,40 @@ final class SidebarView: NSView, NSTableViewDataSource, NSTableViewDelegate {
         return tab
     }
 
+    /// A group header dragged in this window's tab list.
+    private func group(from info: NSDraggingInfo) -> UUID? {
+        guard let text = info.draggingPasteboard.string(forType: .boskTabGroup),
+              let id = UUID(uuidString: text), store.group(id) != nil else { return nil }
+        return id
+    }
+
     func tableView(_ tableView: NSTableView, pasteboardWriterForRow row: Int) -> NSPasteboardWriting? {
-        guard let tab = tab(atRow: row) else { return nil }
         let item = NSPasteboardItem()
+        if rows.indices.contains(row), case .group(let id) = rows[row] {
+            item.setString(id.uuidString, forType: .boskTabGroup)
+            return item
+        }
+        guard let tab = tab(atRow: row) else { return nil }
         item.setString(tab.id.uuidString, forType: .boskTab)
         return item
     }
 
     func tableView(_ tableView: NSTableView, draggingSession session: NSDraggingSession,
                    willBeginAt screenPoint: NSPoint, forRowIndexes rowIndexes: IndexSet) {
+        // The row leaves with the pointer; its title must not stay behind.
+        SidebarTooltip.hide()
+        // The table makes its drag image from cell views, and this list has none (it draws whole
+        // rows), so the drag showed nothing. Use a picture of the row.
+        if let row = rowIndexes.first, let rowView = tableView.rowView(atRow: row, makeIfNecessary: false) {
+            let image = dragImage(of: rowView)
+            let frame = tableView.rect(ofRow: row)
+            session.enumerateDraggingItems(options: [], for: tableView, classes: [NSPasteboardItem.self],
+                                           searchOptions: [:]) { item, _, _ in
+                item.setDraggingFrame(frame, contents: image)
+            }
+        }
         draggedTab = rowIndexes.first.flatMap { tab(atRow: $0) }
+        guard draggedTab != nil else { return }
         // A tab dropped outside the window becomes a window there: do not slide it back.
         session.animatesToStartingPositionsOnCancelOrFail = false
         // Show where to drop to pin, also when nothing is pinned yet.
@@ -247,6 +280,18 @@ final class SidebarView: NSView, NSTableViewDataSource, NSTableViewDelegate {
 
     func tableView(_ tableView: NSTableView, validateDrop info: NSDraggingInfo, proposedRow row: Int,
                    proposedDropOperation dropOperation: NSTableView.DropOperation) -> NSDragOperation {
+        if let dragged = group(from: info) {
+            // A group goes between groups and loose tabs. Inside another group, show the line
+            // above that group's header, as the group cannot go there.
+            var target = row
+            if rows.indices.contains(row), case .tab(let index) = rows[row],
+               let other = store.tabs[index].groupID, other != dragged,
+               let header = rows.firstIndex(of: .group(other)) {
+                target = header
+            }
+            tableView.setDropRow(target, dropOperation: .above)
+            return .move
+        }
         // Pinned tabs are in every window already, so only normal tabs come from another window.
         guard tab(from: info) != nil || tabFromOtherWindow(info) != nil else { return [] }
         // On a group header, the tab joins the group. On any other row, it goes above the row.
@@ -259,6 +304,10 @@ final class SidebarView: NSView, NSTableViewDataSource, NSTableViewDelegate {
                    dropOperation: NSTableView.DropOperation) -> Bool {
         let target = TabGrouping.dropTarget(items: rows, groupIDs: store.tabs.map(\.groupID),
                                             row: row, on: dropOperation == .on)
+        if let group = group(from: info) {
+            store.moveGroup(group, to: target.index)
+            return true
+        }
         if let tab = tabFromOtherWindow(info) {
             tab.store?.transfer(tab, to: store, at: target.index, group: target.groupID)
             return true
@@ -271,6 +320,39 @@ final class SidebarView: NSView, NSTableViewDataSource, NSTableViewDelegate {
                           group: target.groupID)
         }
         return true
+    }
+
+    /// A picture of the row on the sidebar color, so it can be read over the page. It is made at
+    /// once from the row's layers: the rows draw with layers, which `cacheDisplay` leaves out, and
+    /// the table hides the row while it is dragged.
+    private func dragImage(of rowView: NSView) -> NSImage {
+        let size = rowView.bounds.size
+        let scale = window?.backingScaleFactor ?? 2
+        guard let layer = rowView.layer,
+              let rep = NSBitmapImageRep(bitmapDataPlanes: nil, pixelsWide: Int(size.width * scale),
+                                         pixelsHigh: Int(size.height * scale), bitsPerSample: 8, samplesPerPixel: 4,
+                                         hasAlpha: true, isPlanar: false, colorSpaceName: .deviceRGB,
+                                         bytesPerRow: 0, bitsPerPixel: 0),
+              let context = NSGraphicsContext(bitmapImageRep: rep) else { return NSImage(size: size) }
+        let cg = context.cgContext
+        cg.scaleBy(x: scale, y: scale)
+        cg.setFillColor(rowView.resolved(SidebarColors.background.withAlphaComponent(0.9)))
+        cg.addPath(CGPath(roundedRect: CGRect(origin: .zero, size: size).insetBy(dx: 4, dy: 0),
+                          cornerWidth: 8, cornerHeight: 8, transform: nil))
+        cg.fillPath()
+        // The table has hidden the row already; show it only for the picture.
+        let wasHidden = rowView.isHidden
+        rowView.isHidden = false
+        // Rows are flipped (y = 0 is the top); the bitmap is not.
+        if rowView.isFlipped {
+            cg.translateBy(x: 0, y: size.height)
+            cg.scaleBy(x: 1, y: -1)
+        }
+        layer.render(in: cg)
+        rowView.isHidden = wasHidden
+        let image = NSImage(size: size)
+        image.addRepresentation(rep)
+        return image
     }
 
     private func dropOnGrid(tabID: String, at index: Int) {
@@ -286,6 +368,10 @@ final class SidebarView: NSView, NSTableViewDataSource, NSTableViewDelegate {
     @objc private func rowClicked() {
         let row = tableView.clickedRow
         guard rows.indices.contains(row) else { return }
+        if case .tab = rows[row], let tab = tab(atRow: row), NSApp.currentEvent?.modifierFlags.contains(.command) == true {
+            return toggleMultiSelection(tab)
+        }
+        clearMultiSelection()
         switch rows[row] {
         case .tab: if let tab = tab(atRow: row) { store.select(tab) }
         case .group(let id): store.toggleFold(id)
@@ -293,17 +379,40 @@ final class SidebarView: NSView, NSTableViewDataSource, NSTableViewDelegate {
         }
     }
 
+    // MARK: Selection of many tabs
+
+    /// Cmd+click adds a tab to the selection or takes it out. The current tab is always in it.
+    private func toggleMultiSelection(_ tab: Tab) {
+        guard tab !== store.selectedTab else { return }
+        if multiSelection.remove(tab.id) == nil { multiSelection.insert(tab.id) }
+        reloadTabs()
+    }
+
+    private func clearMultiSelection() {
+        guard !multiSelection.isEmpty else { return }
+        multiSelection = []
+        reloadTabs()
+    }
+
+    /// The selected normal tabs in list order: the Cmd+clicked tabs and the current tab.
+    /// Without a Cmd+click, only the current tab.
+    var selectedTabs: [Tab] {
+        store.tabs.filter { $0 === store.selectedTab || multiSelection.contains($0.id) }
+    }
+
     // MARK: Groups
 
-    /// Puts the tab in a new group, and opens the group panel to name it.
-    func addToNewGroup(_ tab: Tab) {
-        guard let group = store.addToNewGroup(tab) else { return }
+    /// Puts the tabs in a new group, and opens the group panel to name it.
+    func addToNewGroup(_ tabs: [Tab]) {
+        clearMultiSelection()
+        guard let group = store.addToNewGroup(tabs) else { return }
         showGroupEditor(group.id)
     }
 
     /// Opens the group panel below the group header.
     func showGroupEditor(_ id: UUID) {
         guard let row = rows.firstIndex(of: .group(id)) else { return }
+        SidebarTooltip.hide()
         let actions = TabGroupEditor.Actions(
             newTab: { [weak self] in self?.onNewTabInGroup?(id) },
             // With every tab of the window in the group, the new window would be the same as this one.
@@ -344,6 +453,18 @@ final class SidebarView: NSView, NSTableViewDataSource, NSTableViewDelegate {
     @objc private func foldClicked() { onToggleFold?() }
 }
 
+/// The tab list's table. The table hides a row as soon as the user drags it, also a row with
+/// nothing to drag, and does not show it again: the "New Tab" row disappeared until a click.
+/// So only rows that can move start a drag.
+@MainActor
+private final class SidebarTableView: NSTableView {
+    var canDragRow: ((Int) -> Bool)?
+
+    override func canDragRows(with rowIndexes: IndexSet, at mouseDownPoint: NSPoint) -> Bool {
+        rowIndexes.allSatisfy { canDragRow?($0) ?? true } && super.canDragRows(with: rowIndexes, at: mouseDownPoint)
+    }
+}
+
 extension SidebarView: NSMenuDelegate {
     /// The right-click menu for the clicked tab row. A group header opens the group panel instead.
     func menuNeedsUpdate(_ menu: NSMenu) {
@@ -355,11 +476,17 @@ extension SidebarView: NSMenuDelegate {
             return
         }
         guard let tab = tab(atRow: row) else { return }
+        let selection = selectedTabs
+        if !multiSelection.isEmpty, selection.count > 1, selection.contains(where: { $0 === tab }) {
+            return addGroupItems(for: selection, to: menu)
+        }
+        // A right-click outside the selection is for that tab only.
+        clearMultiSelection()
         menu.addItem(ClosureMenuItem("Pin Tab") { [weak self] in self?.store.pin(tab) })
         menu.addItem(ClosureMenuItem("Copy Address") { tab.copyAddress() })
         if let reader = ReaderMode.menuItem(for: tab) { menu.addItem(reader) }
         menu.addItem(.separator())
-        menu.addItem(ClosureMenuItem("Add Tab to New Group") { [weak self] in self?.addToNewGroup(tab) })
+        menu.addItem(ClosureMenuItem("Add Tab to New Group") { [weak self] in self?.addToNewGroup([tab]) })
         let otherGroups = groupsInOrder.filter { $0.id != tab.groupID }
         if !otherGroups.isEmpty {
             let submenu = NSMenu()
@@ -387,6 +514,25 @@ extension SidebarView: NSMenuDelegate {
         let closeOthers = ClosureMenuItem("Close Other Tabs") { [weak self] in self?.store.closeOtherTabs(than: tab) }
         closeOthers.isEnabled = store.tabs.count > 1
         menu.addItem(closeOthers)
+    }
+
+    /// The menu for a selection of many tabs: the group items only.
+    private func addGroupItems(for tabs: [Tab], to menu: NSMenu) {
+        menu.addItem(ClosureMenuItem("Add \(tabs.count) Tabs to New Group") { [weak self] in self?.addToNewGroup(tabs) })
+        let groups = groupsInOrder
+        guard !groups.isEmpty else { return }
+        let submenu = NSMenu()
+        for group in groups {
+            let item = ClosureMenuItem(menuTitle(of: group)) { [weak self] in
+                self?.clearMultiSelection()
+                for tab in tabs { self?.store.add(tab, toGroup: group.id) }
+            }
+            item.image = colorDot(group.color)
+            submenu.addItem(item)
+        }
+        let addToGroup = NSMenuItem(title: "Add \(tabs.count) Tabs to Group", action: nil, keyEquivalent: "")
+        addToGroup.submenu = submenu
+        menu.addItem(addToGroup)
     }
 }
 

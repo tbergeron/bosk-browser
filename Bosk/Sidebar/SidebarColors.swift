@@ -15,6 +15,8 @@ enum SidebarColors {
     static let hover = NSColor(name: nil) { appearance in
         appearance.isDark ? NSColor.white.withAlphaComponent(0.07) : NSColor.white.withAlphaComponent(0.4)
     }
+    /// Tabs in a selection of many tabs (Cmd+click), other than the current tab.
+    static let multiSelected = NSColor(name: nil) { _ in NSColor.controlAccentColor.withAlphaComponent(0.25) }
     static let tile = NSColor(name: nil) { appearance in
         appearance.isDark ? NSColor.white.withAlphaComponent(0.06) : NSColor.black.withAlphaComponent(0.05)
     }
@@ -34,6 +36,9 @@ enum SidebarColors {
         }
         return NSColor(name: nil) { appearance in rgb(appearance.isDark ? dark : light) }
     }
+
+    /// The group's box in the folded sidebar: light enough for the icons to stay clear.
+    static let groupTintAlpha: CGFloat = 0.22
 
     private static func rgb(_ hex: UInt32) -> NSColor {
         NSColor(srgbRed: CGFloat((hex >> 16) & 0xFF) / 255, green: CGFloat((hex >> 8) & 0xFF) / 255,

@@ -304,9 +304,10 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate {
         guard let tab = store.selectedTab else { return }
         if tab.isPinned { store.unpin(tab) } else { store.pin(tab) }
     }
+    /// The current tab, and the tabs Cmd+clicked in the sidebar.
     @objc func addTabToNewGroup(_ sender: Any?) {
         guard let tab = store.selectedTab, !tab.isPinned else { return }
-        sidebar.addToNewGroup(tab)
+        sidebar.addToNewGroup(sidebar.selectedTabs)
     }
     @objc func removeTabFromGroup(_ sender: Any?) {
         guard let tab = store.selectedTab else { return }

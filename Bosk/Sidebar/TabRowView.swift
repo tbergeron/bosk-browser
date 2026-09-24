@@ -12,11 +12,15 @@ final class TabRowView: NSTableRowView {
     private let iconLayer = CALayer()
     /// The color bar at the left edge of a grouped tab.
     private let groupBarLayer = CALayer()
+    /// Folded sidebar: the group's tinted box, in place of the bar (see TabGroupRowView).
+    private let groupTintLayer = CALayer()
     private var groupColor: NSColor?
     private var isLastInGroup = false
     private let titleField = NSTextField(labelWithString: "")
     private let closeButton = NSButton()
     private var isCurrent = false
+    /// Cmd+clicked into the selection of many tabs.
+    private var isMultiSelected = false
     /// "plus" or "globe" when the row has no favicon.
     private var symbolName: String?
     private var isHovered = false
@@ -36,6 +40,9 @@ final class TabRowView: NSTableRowView {
         layer?.addSublayer(iconLayer)
         groupBarLayer.cornerRadius = 2
         layer?.addSublayer(groupBarLayer)
+        groupTintLayer.cornerRadius = 10
+        groupTintLayer.cornerCurve = .continuous
+        layer?.insertSublayer(groupTintLayer, at: 0)
 
         titleField.font = .systemFont(ofSize: 13)
         titleField.lineBreakMode = .byTruncatingTail
@@ -58,13 +65,16 @@ final class TabRowView: NSTableRowView {
     /// - Parameters:
     ///   - groupColor: The color of the tab's group; nil for a tab with no group.
     ///   - isLastInGroup: The bar ends at this row.
+    ///   - isMultiSelected: The tab is in the selection of many tabs (Cmd+click).
     func configure(title: String, icon: NSImage?, isCurrent: Bool, isCompact: Bool, isNewTabRow: Bool = false,
-                   groupColor: NSColor? = nil, isLastInGroup: Bool = false) {
+                   groupColor: NSColor? = nil, isLastInGroup: Bool = false, isMultiSelected: Bool = false) {
         self.isCurrent = isCurrent
+        self.isMultiSelected = isMultiSelected
         self.isCompact = isCompact
         self.groupColor = groupColor
         self.isLastInGroup = isLastInGroup
-        groupBarLayer.isHidden = groupColor == nil
+        groupBarLayer.isHidden = groupColor == nil || isCompact
+        groupTintLayer.isHidden = groupColor == nil || !isCompact
         titleField.stringValue = title
         titleField.textColor = isNewTabRow ? .secondaryLabelColor : .labelColor
         titleField.isHidden = isCompact
@@ -91,6 +101,9 @@ final class TabRowView: NSTableRowView {
         // the bar stops at the bottom of the tab's background. Rows are flipped: y = 0 is the top.
         let barBottom = isLastInGroup ? backgroundLayer.frame.maxY : bounds.height + 2
         groupBarLayer.frame = NSRect(x: 0, y: -2, width: 4, height: barBottom + 2)
+        // The last row closes the box with round bottom corners ("max Y" is the bottom here).
+        groupTintLayer.frame = NSRect(x: 6, y: 0, width: bounds.width - 12, height: bounds.height - (isLastInGroup ? 2 : 0))
+        groupTintLayer.maskedCorners = isLastInGroup ? [.layerMinXMaxYCorner, .layerMaxXMaxYCorner] : []
         let iconSize: CGFloat = 16
         let indent: CGFloat = groupColor == nil ? 0 : 8
         if isCompact {
@@ -114,11 +127,17 @@ final class TabRowView: NSTableRowView {
             backgroundLayer.shadowOpacity = effectiveAppearance.isDark ? 0 : 0.08
             backgroundLayer.shadowRadius = 2
             backgroundLayer.shadowOffset = CGSize(width: 0, height: -1)
+        } else if isMultiSelected {
+            backgroundLayer.backgroundColor = resolved(SidebarColors.multiSelected)
+            backgroundLayer.shadowOpacity = 0
         } else {
             backgroundLayer.backgroundColor = isHovered ? resolved(SidebarColors.hover) : NSColor.clear.cgColor
             backgroundLayer.shadowOpacity = 0
         }
-        if let groupColor { groupBarLayer.backgroundColor = resolved(groupColor) }
+        if let groupColor {
+            groupBarLayer.backgroundColor = resolved(groupColor)
+            groupTintLayer.backgroundColor = resolved(groupColor.withAlphaComponent(SidebarColors.groupTintAlpha))
+        }
         CATransaction.commit()
     }
 

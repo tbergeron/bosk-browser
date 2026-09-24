@@ -65,6 +65,37 @@ struct TabGroupingTests {
         #expect(TabGrouping.groupForInsertion(at: 3, groupIDs: [g, g, nil], preferred: g) == nil)
     }
 
+    @Test("A dragged group goes exactly where it was dropped, between groups or loose tabs")
+    func groupMoves() {
+        // Tabs: a, g, g, b, h, h. Group g is at 1...2.
+        let ids: [UUID?] = [nil, g, g, nil, h, h]
+        #expect(TabGrouping.groupDestination(of: 1...2, proposed: 0, groupIDs: ids) == 0)
+        #expect(TabGrouping.groupDestination(of: 1...2, proposed: 4, groupIDs: ids) == 2)   // above h
+        #expect(TabGrouping.groupDestination(of: 1...2, proposed: 6, groupIDs: ids) == 4)   // the end
+    }
+
+    @Test("A group dropped inside another group goes below it, so the other group does not split")
+    func groupDropInsideOtherGroup() {
+        let ids: [UUID?] = [nil, g, g, nil, h, h]
+        // Between the two tabs of h: after h, the end of the list without g.
+        #expect(TabGrouping.groupDestination(of: 1...2, proposed: 5, groupIDs: ids) == 4)
+    }
+
+    @Test("A group dropped on its own tabs stays where it is")
+    func groupDropOnItself() {
+        let ids: [UUID?] = [nil, g, g, nil]
+        #expect(TabGrouping.groupDestination(of: 1...2, proposed: 1, groupIDs: ids) == 1)
+        #expect(TabGrouping.groupDestination(of: 1...2, proposed: 2, groupIDs: ids) == 1)
+        #expect(TabGrouping.groupDestination(of: 1...2, proposed: 3, groupIDs: ids) == 1)
+    }
+
+    @Test("New group tabs taken from inside a group go below that group, so it does not split")
+    func blockInsideGroup() {
+        #expect(TabGrouping.blockInsertionIndex(at: 1, groupIDs: [g, g, nil]) == 2)
+        #expect(TabGrouping.blockInsertionIndex(at: 0, groupIDs: [g, g, nil]) == 0)
+        #expect(TabGrouping.blockInsertionIndex(at: 2, groupIDs: [g, g, nil]) == 2)
+    }
+
     @Test("A new group gets a color no other group has, so groups look different")
     func unusedColor() {
         #expect(TabGroupColor.firstUnused(in: []) == .grey)

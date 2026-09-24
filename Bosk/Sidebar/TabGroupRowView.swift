@@ -8,9 +8,11 @@ final class TabGroupRowView: NSTableRowView {
 
     private let backgroundLayer = CALayer()
     private let barLayer = CALayer()
-    /// Folded sidebar: a short bar in the group color instead of the name.
-    private let capsuleLayer = CALayer()
+    /// Folded sidebar: the top of a box in the group color, around the group's tab icons.
+    private let tintLayer = CALayer()
     private let titleField = NSTextField(labelWithString: "")
+    /// Folded sidebar: the first letter of the name (or the number of tabs), in place of the name.
+    private let letterField = NSTextField(labelWithString: "")
     private var color: NSColor = .labelColor
     private var isHovered = false
     private var isCompact = false
@@ -26,8 +28,12 @@ final class TabGroupRowView: NSTableRowView {
         layer?.addSublayer(backgroundLayer)
         barLayer.cornerRadius = 2
         layer?.addSublayer(barLayer)
-        capsuleLayer.cornerRadius = 2
-        layer?.addSublayer(capsuleLayer)
+        tintLayer.cornerRadius = 10
+        tintLayer.cornerCurve = .continuous
+        layer?.insertSublayer(tintLayer, at: 0)
+        letterField.font = .systemFont(ofSize: 13, weight: .bold)
+        letterField.alignment = .center
+        addSubview(letterField)
         titleField.font = .systemFont(ofSize: 13, weight: .semibold)
         titleField.lineBreakMode = .byTruncatingTail
         addSubview(titleField)
@@ -48,7 +54,10 @@ final class TabGroupRowView: NSTableRowView {
         titleField.textColor = title.isEmpty ? .secondaryLabelColor : color
         titleField.isHidden = isCompact
         barLayer.isHidden = isCompact
-        capsuleLayer.isHidden = !isCompact
+        tintLayer.isHidden = !isCompact
+        letterField.isHidden = !isCompact
+        letterField.stringValue = title.isEmpty ? "\(tabCount)" : String(title.prefix(1)).uppercased()
+        letterField.textColor = color
         // The folded sidebar shows the name at once (SidebarTooltip).
         toolTip = isCompact ? nil : name
         if isCompact, isHovered { SidebarTooltip.show(name, for: self) }
@@ -67,7 +76,13 @@ final class TabGroupRowView: NSTableRowView {
         let barTop = backgroundLayer.frame.minY
         let barBottom = endsHere ? backgroundLayer.frame.maxY : bounds.height + 2
         barLayer.frame = NSRect(x: 0, y: barTop, width: 4, height: barBottom - barTop)
-        capsuleLayer.frame = NSRect(x: bounds.midX - 9, y: bounds.midY - 2, width: 18, height: 4)
+        // Rows are flipped: y = 0 and the "min Y" corners are at the top. The box goes on in the
+        // tab rows below (TabRowView), so only its top corners are round, unless no tab follows.
+        tintLayer.frame = NSRect(x: 6, y: 2, width: bounds.width - 12, height: bounds.height - (endsHere ? 4 : 2))
+        tintLayer.maskedCorners = endsHere
+            ? [.layerMinXMinYCorner, .layerMaxXMinYCorner, .layerMinXMaxYCorner, .layerMaxXMaxYCorner]
+            : [.layerMinXMinYCorner, .layerMaxXMinYCorner]
+        letterField.frame = NSRect(x: 0, y: bounds.midY - 9, width: bounds.width, height: 18)
         titleField.frame = NSRect(x: 16, y: bounds.midY - 8, width: max(0, bounds.width - 30), height: 17)
         CATransaction.commit()
     }
@@ -77,7 +92,7 @@ final class TabGroupRowView: NSTableRowView {
         CATransaction.setAnimationDuration(0.12)
         backgroundLayer.backgroundColor = isHovered ? resolved(SidebarColors.hover) : NSColor.clear.cgColor
         barLayer.backgroundColor = resolved(color)
-        capsuleLayer.backgroundColor = resolved(color)
+        tintLayer.backgroundColor = resolved(color.withAlphaComponent(SidebarColors.groupTintAlpha))
         CATransaction.commit()
     }
 

@@ -269,6 +269,7 @@ final class PinnedTileView: NSView, NSDraggingSource {
         guard let start = mouseDownPoint, let tab,
               hypot(event.locationInWindow.x - start.x, event.locationInWindow.y - start.y) > 4 else { return }
         mouseDownPoint = nil
+        SidebarTooltip.hide()
         let item = NSPasteboardItem()
         item.setString(tab.id.uuidString, forType: .boskTab)
         let dragItem = NSDraggingItem(pasteboardWriter: item)

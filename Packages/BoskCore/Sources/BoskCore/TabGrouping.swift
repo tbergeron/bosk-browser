@@ -75,6 +75,29 @@ public enum TabGrouping {
         }
     }
 
+    /// Where a block of tabs (a group, or the tabs of a new group) goes in the list without it.
+    /// A place inside another group moves to just below that group, so no group splits.
+    /// - Parameter index: An insertion index in `groupIDs`, the list without the block.
+    public static func blockInsertionIndex(at index: Int, groupIDs: [UUID?]) -> Int {
+        let index = min(max(0, index), groupIDs.count)
+        guard index > 0, index < groupIDs.count, let group = groupIDs[index - 1], groupIDs[index] == group else {
+            return index
+        }
+        return (groupIDs.lastIndex(of: group) ?? index - 1) + 1
+    }
+
+    /// Where a dragged group goes: an insertion index in the list without the group.
+    /// - Parameters:
+    ///   - range: The group's tabs in the list.
+    ///   - proposed: The drop's insertion index in the list with the group still in it.
+    public static func groupDestination(of range: ClosedRange<Int>, proposed: Int, groupIDs: [UUID?]) -> Int {
+        var rest = groupIDs
+        rest.removeSubrange(range)
+        // A drop inside the group itself does not move it.
+        let index = proposed > range.upperBound ? proposed - range.count : min(proposed, range.lowerBound)
+        return blockInsertionIndex(at: index, groupIDs: rest)
+    }
+
     /// The group of a tab put in at `index`. Between two tabs of one group, the tab joins
     /// that group, so a group never splits in two. Next to a tab of `preferred`, it joins
     /// `preferred` (a reopened tab goes back to its group, a link stays in its opener's group).

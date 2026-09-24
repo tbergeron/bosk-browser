@@ -38,7 +38,7 @@ Then open http://localhost:8765 in Bosk.
 | Cmd+Y (Show All History) | The command bar opens with visited pages under day headers ("Today", …), newest first, with times; typing filters; Up and Down skip the headers | List, header, times, filter: yes. Arrow keys: not tested |
 | History list: right-click a row > Remove from History | The row goes away | Not tested |
 | History > Clear History… | Asks first; after that, Cmd+Y shows no rows | Not tested |
-| Cmd+Shift+B on a web page | The page is in the Bookmarks menu; the menu item now says "Remove Bookmark". After a relaunch, the bookmark is still there | Menu and title: yes. Relaunch: not tested |
+| Cmd+D on a web page | The page is in the Bookmarks menu; the menu item now says "Remove Bookmark". After a relaunch, the bookmark is still there | Menu and title: yes. Relaunch: not tested |
 | Cmd+Option+B (Show Bookmarks) | The command bar lists the bookmarks under "Bookmarks"; Return opens one in a new tab; right-click > Remove Bookmark removes it | List shows: yes. Return and remove: not tested |
 | Cmd+T, type part of a bookmark's title | The bookmark row shows above history rows | Not tested (unit test covers the order) |
 | A list with more than 10 rows | The list scrolls; the selected row stays visible | Not tested |
@@ -50,7 +50,7 @@ Then open http://localhost:8765 in Bosk.
 | Search Commands: an item that is off (Window > Remove Window from Set) | The row is gray; it cannot be chosen | Gray: yes. Choosing it: not tested |
 | Search Commands: type "bookmark" on a page with a bookmark | "Remove Bookmark" and the bookmark itself show under "Bookmarks" | Yes |
 | Search Commands: "tab 2" with two or more tabs | Tab 2 is selected | Not tested |
-| Remove Bookmark (menu, Cmd+Shift+B, Search Commands) | Asks first; Cancel keeps the bookmark; Remove Bookmark removes it | From Search Commands: yes. Menu and Cmd+Shift+B: not tested (same action) |
+| Remove Bookmark (menu, Cmd+D, Search Commands) | Asks first; Cancel keeps the bookmark; Remove Bookmark removes it | From Search Commands: yes. Menu and Cmd+D: not tested (same action) |
 | Close Window (menu, Cmd+Shift+W, close button, Search Commands) with tabs | Asks first; Cancel keeps the window open | From Search Commands: yes. Others: not tested (same windowShouldClose) |
 | Close Window with no tabs, or only pinned tabs | Closes with no question | Not tested |
 | Quit with windows open | No question; the session keeps the tabs | Not tested |

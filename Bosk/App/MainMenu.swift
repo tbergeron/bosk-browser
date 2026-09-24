@@ -74,7 +74,8 @@ enum MainMenu {
         tabsMenu.addItem(item("Next Tab", #selector(BrowserWindowController.selectNextTab(_:)), "}", [.command, .shift], alternate: true))
         tabsMenu.addItem(item("Previous Tab", #selector(BrowserWindowController.selectPreviousTab(_:)), "{", [.command, .shift], alternate: true))
         tabsMenu.addItem(.separator())
-        tabsMenu.addItem(item("Pin or Unpin Tab", #selector(BrowserWindowController.togglePinTab(_:)), "d"))
+        tabsMenu.addItem(withTitle: "Pin or Unpin Tab", action: #selector(BrowserWindowController.togglePinTab(_:)),
+                         keyEquivalent: "")
         tabsMenu.addItem(withTitle: "Add Tab to New Group", action: #selector(BrowserWindowController.addTabToNewGroup(_:)),
                          keyEquivalent: "")
         tabsMenu.addItem(withTitle: "Remove Tab from Group", action: #selector(BrowserWindowController.removeTabFromGroup(_:)),
@@ -98,7 +99,7 @@ enum MainMenu {
         add(historyMenu, title: "History", to: main)
 
         let bookmarksMenu = NSMenu(title: "Bookmarks")
-        bookmarksMenu.addItem(item("Bookmark This Page", #selector(BrowserWindowController.bookmarkPage(_:)), "B"))
+        bookmarksMenu.addItem(item("Bookmark This Page", #selector(BrowserWindowController.bookmarkPage(_:)), "d"))
         bookmarksMenu.addItem(item("Show Bookmarks", #selector(BrowserWindowController.showBookmarks(_:)), "b",
                                    [.command, .option]))
         bookmarksMenu.addItem(.separator())

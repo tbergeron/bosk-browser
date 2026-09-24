@@ -286,16 +286,40 @@ final class TabStore {
 
     func group(_ id: UUID) -> TabGroup? { groups.first { $0.id == id } }
 
-    /// Puts one tab in a new group with a color no other group has. The tab leaves its old group first.
+    /// Puts tabs in a new group with a color no other group has. The tabs keep their order and go
+    /// where the first of them is; if that is inside a group, below that group, so it does not split.
     @discardableResult
-    func addToNewGroup(_ tab: Tab) -> TabGroup? {
-        guard tabs.contains(where: { $0 === tab }) else { return nil }
-        if tab.groupID != nil { removeFromGroup(tab) }
-        let group = TabGroup(color: .firstUnused(in: groups.map(\.color)))
+    func addToNewGroup(_ selection: [Tab]) -> TabGroup? {
+        let members = tabs.filter { tab in selection.contains { $0 === tab } }
+        guard let first = members.first, let firstIndex = tabs.firstIndex(where: { $0 === first }) else { return nil }
+        let oldIndexes = members.compactMap { tab in tabs.firstIndex { $0 === tab }.map { pinnedTabs.count + $0 } }
+        tabs.removeAll { tab in members.contains { $0 === tab } }
+        let destination = TabGrouping.blockInsertionIndex(at: firstIndex, groupIDs: tabs.map(\.groupID))
+        // Only the colors of groups that still have tabs are in use.
+        let usedColors = groups.filter { group in tabs.contains { $0.groupID == group.id } }.map(\.color)
+        let group = TabGroup(color: .firstUnused(in: usedColors))
         groups.append(group)
-        tab.groupID = group.id
+        for tab in members { tab.groupID = group.id }
+        tabs.insert(contentsOf: members, at: destination)
         structureChanged()
+        for (tab, from) in zip(members, oldIndexes) { ExtensionManager.shared.didMove(tab, from: from) }
         return group
+    }
+
+    /// Moves a group with all its tabs, so they stay together.
+    /// - Parameter index: The drop's insertion index in the list with the group still in it.
+    func moveGroup(_ id: UUID, to index: Int) {
+        guard let first = tabs.firstIndex(where: { $0.groupID == id }),
+              let last = tabs.lastIndex(where: { $0.groupID == id }) else { return }
+        let destination = TabGrouping.groupDestination(of: first...last, proposed: index, groupIDs: tabs.map(\.groupID))
+        guard destination != first else { return }
+        let members = Array(tabs[first...last])
+        tabs.removeSubrange(first...last)
+        tabs.insert(contentsOf: members, at: destination)
+        structureChanged()
+        for (offset, tab) in members.enumerated() {
+            ExtensionManager.shared.didMove(tab, from: pinnedTabs.count + first + offset)
+        }
     }
 
     /// Moves a tab to the end of a group.
