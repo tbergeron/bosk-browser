@@ -13,6 +13,7 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate {
     private let findBar = FindBar()
     private let extensionActions = ExtensionActionsView()
     private let addToBoskButton = AddToBoskButton()
+    private let siteButton = SiteButton()
     private let adBlockerButton = AdBlockerButton()
     private let sidebar: SidebarView
     private let rootView: RootView
@@ -48,7 +49,7 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate {
         store.window = window
         findBar.onClose = { [weak self] in self?.hideFindBar() }
         extensionActions.currentTab = { [weak self] in self?.store.selectedTab }
-        topBar.setAccessoryViews([UpdateButton(), addToBoskButton, adBlockerButton, TopBarDivider(), extensionActions, DownloadsButton()])
+        topBar.setAccessoryViews([UpdateButton(), addToBoskButton, siteButton, adBlockerButton, TopBarDivider(), extensionActions, DownloadsButton()])
         ExtensionManager.shared.addObserver(self) { [weak self] in self?.extensionActions.reload() }
         NotificationCenter.default.addObserver(forName: PageZoom.didChangeDefault, object: nil, queue: .main) { [weak self] _ in
             MainActor.assumeIsolated {
@@ -410,6 +411,7 @@ extension BrowserWindowController: TabStoreDelegate {
         if change == .hoveredLink { return container.showStatus(tab.hoveredLink?.absoluteString) }
         if change == .url {
             addToBoskButton.update(for: tab.url)
+            siteButton.update(for: tab)
             adBlockerButton.update(for: tab.url)
         }
         if change == .title || change == .url { window?.title = tab.displayTitle }
@@ -426,6 +428,7 @@ extension BrowserWindowController: TabStoreDelegate {
         previous?.hoveredLink = nil
         container.showStatus(nil)
         addToBoskButton.update(for: tab?.url)
+        siteButton.update(for: tab)
         adBlockerButton.update(for: tab?.url)
         extensionActions.reload()
         if rootView.isFindBarVisible { hideFindBar() }

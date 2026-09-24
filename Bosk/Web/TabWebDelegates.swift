@@ -188,20 +188,38 @@ extension Tab: WKUIDelegate {
     }
 }
 
-/// Camera and microphone answers, per site, until Bosk quits. Not saved to disk:
+/// Camera and microphone answers, per site and device, until Bosk quits. Not saved to disk:
 /// a site gets camera access again only after the user says yes again.
+/// The site panel in the top bar shows and changes them.
 @MainActor
 final class PermissionMemory {
+    enum Device: CaseIterable { case camera, microphone }
+
     static let shared = PermissionMemory()
     private var answers: [String: Bool] = [:]
 
     func decision(for host: String, type: WKMediaCaptureType,
                   ask: () async -> Bool) async -> WKPermissionDecision {
-        let key = "\(host)|\(type.rawValue)"
-        if let answer = answers[key] { return answer ? .grant : .deny }
+        let devices: [Device] = switch type {
+        case .camera: [.camera]
+        case .microphone: [.microphone]
+        default: [.camera, .microphone]
+        }
+        let known = devices.compactMap { answer(for: host, device: $0) }
+        // Ask when one of the devices has no answer yet. A "no" for one device is a "no" for both.
+        if known.count == devices.count { return known.allSatisfy { $0 } ? .grant : .deny }
         let answer = await ask()
-        answers[key] = answer
+        for device in devices { set(answer, for: host, device: device) }
         return answer ? .grant : .deny
+    }
+
+    /// Nil when the site did not ask for the device.
+    func answer(for host: String, device: Device) -> Bool? {
+        answers["\(host)|\(device)"]
+    }
+
+    func set(_ answer: Bool, for host: String, device: Device) {
+        answers["\(host)|\(device)"] = answer
     }
 
     static func question(host: String, type: WKMediaCaptureType) -> String {

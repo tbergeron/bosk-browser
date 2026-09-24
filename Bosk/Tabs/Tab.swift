@@ -50,6 +50,11 @@ final class Tab: NSObject {
         didSet { webView?.pageZoom = zoomOverride ?? PageZoom.defaultZoom }
     }
 
+    /// Set in the site panel. Kept while the tab sleeps, so a woken tab stays silent.
+    var isMuted = false {
+        didSet { webView.map { PageMute.set(isMuted, on: $0) } }
+    }
+
     /// The tab whose page opened this one (window.open, target=_blank). When this tab closes
     /// while on screen, the user goes back to that page.
     weak var opener: Tab?
@@ -156,6 +161,7 @@ final class Tab: NSObject {
     private func attach(_ webView: WKWebView) {
         self.webView = webView
         webView.pageZoom = zoomOverride ?? PageZoom.defaultZoom
+        if isMuted { PageMute.set(true, on: webView) }
         WebViewFactory.register(webView, for: self)
         webView.navigationDelegate = self
         webView.uiDelegate = self
