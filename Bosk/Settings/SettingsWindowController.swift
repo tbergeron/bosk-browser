@@ -39,8 +39,10 @@ final class SettingsModel {
         let id: String
         let name: String
         let icon: NSImage?
-        /// "Version 1.2 · Chrome Web Store · 1 warning"
+        /// "Version 1.2 · Chrome Web Store"
         let details: String
+        /// The messages WebKit gave when it loaded the extension. The row shows the count, with the text in a tooltip.
+        let warnings: [String]
         let canReload: Bool
         var enabled: Bool
     }
@@ -79,12 +81,11 @@ final class SettingsModel {
             var details: [String] = []
             if let version = webExtension?.version { details.append("Version \(version)") }
             details.append(fromStore ? "Chrome Web Store" : "Unpacked")
-            let warnings = webExtension?.errors.count ?? 0
-            if warnings > 0 { details.append(warnings == 1 ? "1 warning" : "\(warnings) warnings") }
             return ExtensionRow(id: record.id,
                                 name: webExtension?.displayName ?? record.fileName,
                                 icon: webExtension?.icon(for: CGSize(width: 32, height: 32)),
                                 details: details.joined(separator: " · "),
+                                warnings: webExtension?.errors.map(\.localizedDescription) ?? [],
                                 canReload: record.sourcePath != nil,
                                 enabled: record.enabled)
         }

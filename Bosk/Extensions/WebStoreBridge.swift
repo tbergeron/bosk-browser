@@ -13,7 +13,7 @@ enum WebStoreBridge {
 
     /// The store checks that the user agent names are exactly "Mozilla AppleWebKit Chrome Safari".
     /// Keep the version below 142: from 142 the store can use a different check.
-    static let chromeVersion = "141.0.0.0"
+    private static let chromeVersion = "141.0.0.0"
     private static let chromeUserAgent =
         "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/\(chromeVersion) Safari/537.36"
 

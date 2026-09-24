@@ -226,7 +226,15 @@ private struct ExtensionsPane: View {
                         .frame(width: 28, height: 28)
                         VStack(alignment: .leading, spacing: 2) {
                             Text(item.name)
-                            Text(item.details).font(.callout).foregroundStyle(.secondary)
+                            HStack(spacing: 0) {
+                                Text(item.details)
+                                if !item.warnings.isEmpty {
+                                    Text(" · ")
+                                    Text(item.warnings.count == 1 ? "1 warning" : "\(item.warnings.count) warnings")
+                                        .help(item.warnings.joined(separator: "\n\n"))
+                                }
+                            }
+                            .font(.callout).foregroundStyle(.secondary)
                         }
                         Spacer(minLength: 0)
                         Menu {
