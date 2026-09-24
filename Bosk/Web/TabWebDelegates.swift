@@ -55,7 +55,13 @@ extension Tab: WKNavigationDelegate {
         framesWithUnsentInput.removeAll()
     }
 
+    @objc(_webView:renderingProgressDidChange:)
+    func webView(_ webView: WKWebView, renderingProgressDidChange events: UInt) {
+        if events & PageBackground.firstVisuallyNonEmptyLayout != 0 { PageBackground.show(in: webView) }
+    }
+
     func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
+        PageBackground.show(in: webView)
         if let url = webView.url, url == errorPageURL {
             errorPageURL = nil
             return
