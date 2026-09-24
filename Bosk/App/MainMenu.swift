@@ -53,7 +53,7 @@ enum MainMenu {
         viewMenu.addItem(item("Reload Page", #selector(BrowserWindowController.browserReload(_:)), "r"))
         viewMenu.addItem(item("Stop", #selector(BrowserWindowController.browserStop(_:)), "."))
         viewMenu.addItem(.separator())
-        viewMenu.addItem(item("Show Reader", #selector(BrowserWindowController.toggleReader(_:)), "R"))
+        viewMenu.addItem(item("Toggle Reader Mode", #selector(BrowserWindowController.toggleReader(_:)), "R"))
         viewMenu.addItem(withTitle: "Allow Ads on This Site", action: #selector(BrowserWindowController.toggleAdsOnSite(_:)),
                          keyEquivalent: "")
         viewMenu.addItem(.separator())
@@ -62,19 +62,19 @@ enum MainMenu {
         viewMenu.addItem(item("Zoom Out", #selector(BrowserWindowController.zoomOut(_:)), "-"))
         viewMenu.addItem(item("Actual Size", #selector(BrowserWindowController.actualSize(_:)), "0"))
         viewMenu.addItem(.separator())
-        viewMenu.addItem(item("Fold Sidebar", #selector(BrowserWindowController.toggleSidebar(_:)), "s"))
-        viewMenu.addItem(withTitle: "Hide Sidebar", action: #selector(BrowserWindowController.toggleHidesSidebar(_:)),
-                         keyEquivalent: "")
+        viewMenu.addItem(item("Hide Sidebar", #selector(BrowserWindowController.toggleHidesSidebar(_:)), "S"))
+        viewMenu.addItem(item("Fold Sidebar", #selector(BrowserWindowController.toggleSidebarFold(_:)), "s"))
+        viewMenu.addItem(.separator())
         viewMenu.addItem(item("Enter Full Screen", #selector(NSWindow.toggleFullScreen(_:)), "f", [.command, .control]))
         add(viewMenu, title: "View", to: main)
 
         let tabsMenu = NSMenu(title: "Tabs")
         tabsMenu.addItem(item("Search Tabs…", #selector(BrowserWindowController.searchTabs(_:)), "A"))
         tabsMenu.addItem(.separator())
-        tabsMenu.addItem(item("Next Tab", #selector(BrowserWindowController.selectNextTab(_:)), "\t", [.control]))
-        tabsMenu.addItem(item("Previous Tab", #selector(BrowserWindowController.selectPreviousTab(_:)), "\t", [.control, .shift]))
-        tabsMenu.addItem(item("Next Tab", #selector(BrowserWindowController.selectNextTab(_:)), "}", [.command, .shift], alternate: true))
-        tabsMenu.addItem(item("Previous Tab", #selector(BrowserWindowController.selectPreviousTab(_:)), "{", [.command, .shift], alternate: true))
+        tabsMenu.addItem(item("Next Tab", #selector(BrowserWindowController.showNextTab(_:)), "\t", [.control]))
+        tabsMenu.addItem(item("Previous Tab", #selector(BrowserWindowController.showPreviousTab(_:)), "\t", [.control, .shift]))
+        tabsMenu.addItem(item("Next Tab", #selector(BrowserWindowController.showNextTab(_:)), "}", [.command, .shift], alternate: true))
+        tabsMenu.addItem(item("Previous Tab", #selector(BrowserWindowController.showPreviousTab(_:)), "{", [.command, .shift], alternate: true))
         tabsMenu.addItem(.separator())
         tabsMenu.addItem(withTitle: "Pin or Unpin Tab", action: #selector(BrowserWindowController.togglePinTab(_:)),
                          keyEquivalent: "")
@@ -143,10 +143,40 @@ enum MainMenu {
         #selector(NSText.selectAll(_:)),
     ]
 
+    /// The shortcuts for Settings > About: each menu bar item with a shortcut, in menu order, so the
+    /// list is always the same as the menu. A hidden second shortcut goes on the row of its command.
+    static func shortcutList() -> [(title: String, keys: String)] {
+        var list: [(title: String, keys: String)] = []
+        // The Window menu has only macOS items, and macOS adds more to it after launch (Fill, Center).
+        for top in NSApp.mainMenu?.items ?? [] where top.submenu !== NSApp.windowsMenu {
+            // An alternate item (Option key) is one that macOS adds, such as Close All.
+            for item in top.submenu?.items ?? [] where !item.keyEquivalent.isEmpty && !item.isAlternate {
+                guard let action = item.action, !standardCommands.contains(action) else { continue }
+                if item.isHidden, let index = list.lastIndex(where: { $0.title == item.title }) {
+                    list[index].keys += "  " + shortcut(of: item)
+                } else {
+                    list.append((item.title, shortcut(of: item)))
+                }
+            }
+        }
+        return list
+    }
+
+    /// The same in all Mac apps, so not in the Settings list. macOS adds the last two to the Edit menu.
+    private static let standardCommands: Set<Selector> = [
+        #selector(NSApplication.hide(_:)), #selector(NSApplication.hideOtherApplications(_:)),
+        #selector(NSApplication.terminate(_:)),
+        Selector(("undo:")), Selector(("redo:")),
+        #selector(NSText.cut(_:)), #selector(NSText.copy(_:)), #selector(NSText.paste(_:)),
+        #selector(NSText.selectAll(_:)),
+        Selector(("startDictation:")), #selector(NSApplication.orderFrontCharacterPalette(_:)),
+    ]
+
     /// "⇧⌘T", as the menu bar shows the shortcut; empty if the item has none.
     static func shortcut(of item: NSMenuItem) -> String {
         let modifiers = item.keyEquivalentModifierMask
-        return SuggestionRanker.shortcutText(key: item.keyEquivalent,
+        // macOS gives some items a Globe key (fn) shortcut, such as Enter Full Screen.
+        return (modifiers.contains(.function) ? "🌐" : "") + SuggestionRanker.shortcutText(key: item.keyEquivalent,
                                              control: modifiers.contains(.control), option: modifiers.contains(.option),
                                              shift: modifiers.contains(.shift), command: modifiers.contains(.command))
     }

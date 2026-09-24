@@ -39,11 +39,11 @@ enum PerfHarness {
         Task { @MainActor in
             try? await Task.sleep(for: .seconds(3))
             for _ in 0..<6 {
-                controller.toggleSidebar(nil)
+                controller.toggleSidebarFold(nil)
                 try? await Task.sleep(for: .seconds(1))
             }
             for _ in 0..<8 {
-                controller.selectNextTab(nil)
+                controller.showNextTab(nil)
                 try? await Task.sleep(for: .milliseconds(600))
             }
         }

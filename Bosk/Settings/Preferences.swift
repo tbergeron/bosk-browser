@@ -119,7 +119,7 @@ enum Preferences {
         }
     }
 
-    /// Posted when `hidesSidebar` changes; windows and Settings update.
+    /// Posted when `hidesSidebar` changes; windows update.
     static let hidesSidebarDidChange = Notification.Name("BoskHidesSidebarDidChange")
 
     /// Extension IDs in the user's top bar order (see ExtensionToolbarOrder).

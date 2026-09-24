@@ -44,6 +44,9 @@ final class TopBar: NSView {
         let image = NSImage(systemSymbolName: symbol, accessibilityDescription: label)!
         let button = NSButton(image: image, target: nil, action: action)
         button.isBordered = false
+        // A click does not take the keyboard focus from the page. With keyboard navigation on,
+        // the button would keep a focus ring, and Space would click it again.
+        button.refusesFirstResponder = true
         button.contentTintColor = .secondaryLabelColor
         button.symbolConfiguration = .init(pointSize: 14, weight: .medium)
         button.toolTip = label

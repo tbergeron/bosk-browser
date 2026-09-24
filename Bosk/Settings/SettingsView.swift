@@ -191,12 +191,6 @@ private struct TabsPane: View {
                 .labelsHidden().fixedSize()
                 .disabled(!model.sleepsTabs)
             }
-            SettingsRow(title: "Hide the sidebar",
-                        subtitle: "Pages use the full window. Switch tabs with Search Tabs (⇧⌘A) or ⌃Tab.") {
-                Toggle("Hide the sidebar", isOn: Binding(get: { model.hidesSidebar },
-                                                         set: { model.setHidesSidebar($0) }))
-                    .toggleStyle(.switch).labelsHidden()
-            }
         }
     }
 }
@@ -330,22 +324,8 @@ private struct PrivacyPane: View {
 private struct AboutPane: View {
     let model: SettingsModel
 
-    /// Only shortcuts that are in the main menu (MainMenu.swift).
-    private let shortcuts: [(String, String)] = [
-        ("Search commands", "⌘P"),
-        ("Address", "⌘L"),
-        ("New, close, reopen tab", "⌘T  ⌘W  ⇧⌘T"),
-        ("Next and previous tab", "⌃⇥  ⌃⇧⇥"),
-        ("Go to tab 1 to 8, last tab", "⌘1 … ⌘9"),
-        ("Search tabs", "⇧⌘A"),
-        ("Show history", "⌘Y"),
-        ("Bookmark page, show bookmarks", "⌘D  ⌥⌘B"),
-        ("Fold the sidebar", "⌘S"),
-        ("Show or hide reader", "⇧⌘R"),
-        ("Find in page", "⌘F"),
-        ("Back and forward", "⌘[  ⌘]"),
-        ("Zoom in, out, actual size", "⌘+  ⌘−  ⌘0"),
-    ]
+    /// Made from the menu bar (MainMenu.swift), so a new shortcut is in the list at once.
+    private let shortcuts = MainMenu.shortcutList()
 
     /// The libraries in Bosk (project.yml and Resources/Reader), with their links.
     private let libraries: [(name: String, use: String, links: [(String, String)])] = [
@@ -369,25 +349,28 @@ private struct AboutPane: View {
                         subtitle: Updater.isConfigured ? "Checked once a day on its own" : "Not set up in this build") {
                 Button("Check now") { model.checkForUpdates() }.pillButton().disabled(!Updater.isConfigured)
             }
-            SettingsRow(title: "Found something wrong?", subtitle: "Opens a new GitHub issue with the version already in it") {
+            SettingsRow(title: "Found something wrong?", subtitle: "Your favorite feature is one GitHub issue away.") {
                 Button("Send Feedback") { model.sendFeedback() }.pillButton()
             }
         }
 
         SettingsCard {
-            ForEach(shortcuts, id: \.0) { name, keys in
+            ForEach(shortcuts, id: \.title) { name, keys in
                 SettingsRow(title: name) {
                     Text(keys).foregroundStyle(.secondary).monospacedDigit()
                 }
             }
         }
 
-        SettingsCard {
-            ForEach(libraries, id: \.name) { library in
-                SettingsRow(title: library.name, subtitle: library.use) {
-                    HStack(spacing: 6) {
-                        ForEach(library.links, id: \.0) { title, link in
-                            Button(title) { model.open(URL(string: link)!) }.pillButton()
+        VStack(alignment: .leading, spacing: 8) {
+            Text("Open-source libraries").font(.headline).padding(.leading, 4)
+            SettingsCard {
+                ForEach(libraries, id: \.name) { library in
+                    SettingsRow(title: library.name, subtitle: library.use) {
+                        HStack(spacing: 6) {
+                            ForEach(library.links, id: \.0) { title, link in
+                                Button(title) { model.open(URL(string: link)!) }.pillButton()
+                            }
                         }
                     }
                 }

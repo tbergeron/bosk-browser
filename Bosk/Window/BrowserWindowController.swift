@@ -42,7 +42,7 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate {
         topBar.onAddressClick = { [weak self] in self?.openLocation(nil) }
         sidebar.onNewTab = { [weak self] in self?.showCommandBar(target: .newTab) }
         sidebar.onNewTabInGroup = { [weak self] id in self?.showCommandBar(target: .newTab, group: id) }
-        sidebar.onToggleFold = { [weak self] in self?.toggleSidebar(nil) }
+        sidebar.onToggleFold = { [weak self] in self?.toggleSidebarFold(nil) }
         rootView.onDragFold = { [weak self] folded in self?.setSidebarFolded(folded, animated: true) }
         store.delegate = self
         store.window = window
@@ -232,16 +232,19 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate {
     @objc func browserForward(_ sender: Any?) { store.selectedTab?.webView?.goForward() }
     @objc func browserReload(_ sender: Any?) { store.selectedTab?.webView?.reload() }
     @objc func browserStop(_ sender: Any?) { store.selectedTab?.webView?.stopLoading() }
-    @objc func selectNextTab(_ sender: Any?) { store.selectNeighbor(offset: 1) }
-    @objc func selectPreviousTab(_ sender: Any?) { store.selectNeighbor(offset: -1) }
+    // NSWindow has actions named selectNextTab:, selectPreviousTab: and toggleSidebar:, and it is
+    // before this controller in the responder chain. It takes those menu items and disables them,
+    // so these actions have other names.
+    @objc func showNextTab(_ sender: Any?) { store.selectNeighbor(offset: 1) }
+    @objc func showPreviousTab(_ sender: Any?) { store.selectNeighbor(offset: -1) }
     /// Cmd+1…8 select that tab; Cmd+9 selects the last tab (as in other browsers).
     @objc func selectTabByNumber(_ sender: NSMenuItem) {
         if sender.tag == 9 { store.select(at: store.allTabs.count - 1) } else { store.select(at: sender.tag - 1) }
     }
-    @objc func toggleSidebar(_ sender: Any?) {
+    @objc func toggleSidebarFold(_ sender: Any?) {
         setSidebarFolded(!rootView.isSidebarFolded, animated: true)
     }
-    /// A setting for all windows (Settings > Tabs).
+    /// For all windows (View > Hide Sidebar, ⇧⌘S).
     @objc func toggleHidesSidebar(_ sender: Any?) { Preferences.hidesSidebar.toggle() }
     @objc func showFindBar(_ sender: Any?) {
         guard store.selectedTab?.webView != nil else { return }
@@ -355,15 +358,15 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate {
 }
 
 extension BrowserWindowController: NSMenuItemValidation {
-    /// "Bookmark This Page", "Show Reader" and "Hide Sidebar" change: their titles say what they
-    /// will do (also in Search Commands), and the first two need a web page. The group items need
-    /// a normal tab (and a group, to remove from). A hidden sidebar cannot fold.
+    /// "Bookmark This Page" and "Hide Sidebar" change: their titles say what they will do (also in
+    /// Search Commands). "Bookmark This Page" and "Toggle Reader Mode" need a web page. The group
+    /// items need a normal tab (and a group, to remove from). A hidden sidebar cannot fold.
     func validateMenuItem(_ menuItem: NSMenuItem) -> Bool {
         if menuItem.action == #selector(toggleHidesSidebar(_:)) {
             menuItem.title = Preferences.hidesSidebar ? "Show Sidebar" : "Hide Sidebar"
             return true
         }
-        if menuItem.action == #selector(toggleSidebar(_:)) {
+        if menuItem.action == #selector(toggleSidebarFold(_:)) {
             return !Preferences.hidesSidebar
         }
         if menuItem.action == #selector(addTabToNewGroup(_:)) {
@@ -373,9 +376,7 @@ extension BrowserWindowController: NSMenuItemValidation {
             return store.selectedTab?.groupID != nil
         }
         if menuItem.action == #selector(toggleReader(_:)) {
-            let item = store.selectedTab.flatMap(ReaderMode.menuItem)
-            menuItem.title = item?.title ?? "Show Reader"
-            return item != nil
+            return store.selectedTab.flatMap(ReaderMode.menuItem) != nil
         }
         if menuItem.action == #selector(toggleAdsOnSite(_:)) {
             let site = AdBlocker.site(for: store.selectedTab?.url)
@@ -580,7 +581,9 @@ private final class RootView: NSView {
         guard !isAnimating else { return }
         sidebar.isHidden = isSidebarHidden
         resizeHandle.isHidden = isSidebarHidden
-        sidebar.frame = sidebarFrame
+        // Hidden, the sidebar keeps its frame: AppKit still lays out its rows, and a row
+        // 0 pt wide gives null and NaN layer frames (a CALayer exception).
+        if !isSidebarHidden { sidebar.frame = sidebarFrame }
         resizeHandle.frame = NSRect(x: sidebarWidth - 4, y: sidebarFrame.minY, width: 8, height: sidebarFrame.height)
         layoutCard(sidebarWidth: sidebarWidth)
     }

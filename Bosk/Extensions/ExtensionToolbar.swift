@@ -23,6 +23,7 @@ final class ExtensionActionsView: NSView {
         listButton.image = NSImage(systemSymbolName: "puzzlepiece.extension", accessibilityDescription: "Extensions")
         listButton.symbolConfiguration = .init(pointSize: 14, weight: .medium)
         listButton.isBordered = false
+        listButton.refusesFirstResponder = true
         listButton.contentTintColor = .secondaryLabelColor
         listButton.toolTip = "Extensions"
         listButton.target = self
@@ -91,6 +92,7 @@ final class ExtensionActionsView: NSView {
     private func makeButton(_ id: String) -> NSButton {
         let button = BadgeButton()
         button.isBordered = false
+        button.refusesFirstResponder = true
         button.imageScaling = .scaleProportionallyDown
         button.target = self
         button.action = #selector(clicked(_:))

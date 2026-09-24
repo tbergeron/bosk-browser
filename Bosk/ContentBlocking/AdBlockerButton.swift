@@ -9,6 +9,7 @@ final class AdBlockerButton: NSButton {
     init() {
         super.init(frame: .zero)
         isBordered = false
+        refusesFirstResponder = true
         symbolConfiguration = .init(pointSize: 14, weight: .medium)
         contentTintColor = .secondaryLabelColor
         target = self

@@ -11,6 +11,7 @@ final class DownloadsButton: NSButton {
         image = NSImage(systemSymbolName: "arrow.down.circle", accessibilityDescription: "Downloads")
         symbolConfiguration = .init(pointSize: 14, weight: .medium)
         isBordered = false
+        refusesFirstResponder = true
         contentTintColor = .secondaryLabelColor
         toolTip = "Downloads"
         target = self

@@ -41,6 +41,7 @@ final class SidebarView: NSView, NSTableViewDataSource, NSTableViewDelegate {
         foldButton.image = NSImage(systemSymbolName: "sidebar.left", accessibilityDescription: "Fold Sidebar")
         foldButton.symbolConfiguration = .init(pointSize: 14, weight: .regular)
         foldButton.isBordered = false
+        foldButton.refusesFirstResponder = true
         foldButton.contentTintColor = .secondaryLabelColor
         foldButton.target = self
         foldButton.action = #selector(foldClicked)
