@@ -103,6 +103,20 @@ extension ExtensionManager: WKWebExtensionControllerDelegate {
         focusedWindowController?.presentPopup(for: action, of: context)
         completionHandler(nil)
     }
+
+    /// Bosk has no native apps, so each native message fails. The error comes after a delay:
+    /// Bitwarden sends "sleep" in a loop and waits for the reply as its timer. An immediate
+    /// error makes the loop spin without a stop.
+    func webExtensionController(_ controller: WKWebExtensionController, sendMessage message: Any,
+                                toApplicationWithIdentifier applicationIdentifier: String?,
+                                for context: WKWebExtensionContext,
+                                replyHandler: @escaping (Any?, (any Error)?) -> Void) {
+        DispatchQueue.main.asyncAfter(deadline: .now() + 10) {
+            replyHandler(nil, NSError(domain: "Bosk", code: 0, userInfo: [
+                NSLocalizedDescriptionKey: "Native messaging is not supported.",
+            ]))
+        }
+    }
 }
 
 extension Tab: WKWebExtensionTab {
