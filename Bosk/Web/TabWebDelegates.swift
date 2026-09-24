@@ -205,7 +205,7 @@ final class PermissionMemory {
         case .microphone: [.microphone]
         default: [.camera, .microphone]
         }
-        let known = devices.compactMap { answer(for: host, device: $0) }
+        let known = devices.compactMap { self.answer(for: host, device: $0) }
         // Ask when one of the devices has no answer yet. A "no" for one device is a "no" for both.
         if known.count == devices.count { return known.allSatisfy { $0 } ? .grant : .deny }
         let answer = await ask()
