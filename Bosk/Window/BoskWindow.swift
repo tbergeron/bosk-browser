@@ -10,17 +10,34 @@ final class BoskWindow: NSWindow {
         return super.performKeyEquivalent(with: event)
     }
 
-    /// AppKit puts the window buttons near the top edge. This makes the title bar `height` tall,
-    /// so the buttons are centered on the same line as the top bar buttons. The space to their
-    /// left is the space above them in the `titleBarHeight` title bar, so they do not move
-    /// sideways when the sidebar folds.
+    override init(contentRect: NSRect, styleMask style: NSWindow.StyleMask,
+                  backing backingStoreType: NSWindow.BackingStoreType, defer flag: Bool) {
+        super.init(contentRect: contentRect, styleMask: style, backing: backingStoreType, defer: flag)
+        // AppKit sometimes puts the window buttons back at its own position (for example at
+        // launch) with no layout of the content view. Move them again when their frames change.
+        guard let close = standardWindowButton(.closeButton),
+              let titlebar = close.superview,
+              let container = titlebar.superview else { return }
+        for view in [close, titlebar, container] {
+            view.postsFrameChangedNotifications = true
+            NotificationCenter.default.addObserver(forName: NSView.frameDidChangeNotification, object: view, queue: nil) { [weak self] _ in
+                MainActor.assumeIsolated { self?.centerWindowButtons() }
+            }
+        }
+    }
+
+    /// AppKit puts the window buttons near the top edge. This makes the title bar as tall as the
+    /// folded top bar, so the buttons are centered on its line. They stay at this position when
+    /// the sidebar opens and folds. The space to their left is the space above them in the
+    /// `titleBarHeight` title bar.
     /// AppKit sets the title bar frames again in each window layout, so the content view
     /// calls this in its layout.
-    func centerWindowButtons(in height: CGFloat) {
+    func centerWindowButtons() {
         guard !styleMask.contains(.fullScreen),
               let close = standardWindowButton(.closeButton),
               let titlebar = close.superview,
               let container = titlebar.superview else { return }
+        let height = Defaults.titleBarHeight - Defaults.contentInset
         let containerFrame = NSRect(x: 0, y: frame.height - height, width: frame.width, height: height)
         if container.frame != containerFrame { container.frame = containerFrame }
         if titlebar.frame != container.bounds { titlebar.frame = container.bounds }

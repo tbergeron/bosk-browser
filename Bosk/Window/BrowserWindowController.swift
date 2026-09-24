@@ -576,7 +576,7 @@ private final class RootView: NSView {
     override func layout() {
         super.layout()
         // The window lays out its title bar before this view.
-        centerWindowButtons()
+        (window as? BoskWindow)?.centerWindowButtons()
         guard !isAnimating else { return }
         sidebar.isHidden = isSidebarHidden
         resizeHandle.isHidden = isSidebarHidden
@@ -597,8 +597,6 @@ private final class RootView: NSView {
                      height: max(0, bounds.height - inset * 2))
         card.layer?.cornerRadius = cardFillsWindow ? 0 : Defaults.contentCornerRadius
         let barHeight = cardFillsWindow ? Self.fullTopBarHeight : Defaults.topBarHeight
-        // A fold moves the card here, not in `layout`, so the window buttons move with it.
-        centerWindowButtons()
         // The window buttons can go past the strip: Back starts after them.
         // In full screen they are hidden.
         let isFullScreen = window?.styleMask.contains(.fullScreen) ?? false
@@ -612,14 +610,6 @@ private final class RootView: NSView {
         let findHeight: CGFloat = isFindBarVisible ? 36 : 0
         findBar.frame = NSRect(x: contentX, y: size.height - barHeight - findHeight, width: contentWidth, height: findHeight)
         container.frame = NSRect(x: contentX, y: 0, width: contentWidth, height: size.height - barHeight - findHeight)
-    }
-
-    /// The window buttons are centered on the top bar line, where the card is now:
-    /// at the window top when folded, `contentInset` below it when open.
-    private func centerWindowButtons() {
-        let cardTop = bounds.maxY - card.frame.maxY
-        (window as? BoskWindow)?.centerWindowButtons(in: cardTop == 0 ? Self.fullTopBarHeight
-                                                                      : 2 * cardTop + Defaults.topBarHeight)
     }
 }
 
