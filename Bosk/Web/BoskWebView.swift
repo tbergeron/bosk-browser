@@ -31,3 +31,35 @@ final class BoskWebView: WKWebView {
         }
     }
 }
+
+/// WebKit's Web Inspector (the developer tools) for a page. WebKit has no public API to open it,
+/// so this uses the private `_inspector`, as Safari does. A macOS update can remove it: then
+/// View > Show Web Inspector is disabled.
+@MainActor
+enum WebInspector {
+    private static let inspectorSelector = NSSelectorFromString("_inspector")
+
+    private static func inspector(of webView: WKWebView) -> NSObject? {
+        guard webView.responds(to: inspectorSelector) else { return nil }
+        return webView.perform(inspectorSelector)?.takeUnretainedValue() as? NSObject
+    }
+
+    static func isAvailable(for webView: WKWebView) -> Bool {
+        inspector(of: webView)?.responds(to: NSSelectorFromString("show")) == true
+    }
+
+    static func isVisible(in webView: WKWebView) -> Bool {
+        guard let inspector = inspector(of: webView), inspector.responds(to: NSSelectorFromString("isVisible")) else {
+            return false
+        }
+        return inspector.value(forKey: "isVisible") as? Bool ?? false
+    }
+
+    /// Shows the inspector, or closes it if it is open.
+    static func toggle(in webView: WKWebView) {
+        guard let inspector = inspector(of: webView) else { return }
+        let selector = NSSelectorFromString(isVisible(in: webView) ? "close" : "show")
+        guard inspector.responds(to: selector) else { return }
+        inspector.perform(selector)
+    }
+}

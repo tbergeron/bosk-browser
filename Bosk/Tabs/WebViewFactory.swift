@@ -68,6 +68,11 @@ enum WebViewFactory {
         configuration.applicationNameForUserAgent = Defaults.userAgentApplicationName
         configuration.setURLSchemeHandler(ReaderMode.schemeHandler, forURLScheme: ReaderPage.scheme)
         configuration.preferences.isElementFullscreenEnabled = true
+        // Private, as in Safari's Develop menu: the Web Inspector opens only with this on.
+        // It also adds Inspect Element to the page's menu.
+        if configuration.preferences.responds(to: NSSelectorFromString("_setDeveloperExtrasEnabled:")) {
+            configuration.preferences.setValue(true, forKey: "developerExtrasEnabled")
+        }
         // Content scripts of extensions run only in web views with this controller.
         configuration.webExtensionController = ExtensionManager.shared.controller
         return configuration

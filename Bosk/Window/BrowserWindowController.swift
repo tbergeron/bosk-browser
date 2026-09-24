@@ -296,6 +296,11 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate {
         ReaderMode.toggle(in: tab)
     }
 
+    @objc func toggleWebInspector(_ sender: Any?) {
+        guard let webView = store.selectedTab?.webView else { return }
+        WebInspector.toggle(in: webView)
+    }
+
     /// From the shield menu in the top bar. The page reloads when the change is on the tabs.
     @objc func toggleAdBlocker(_ sender: Any?) {
         let tab = store.selectedTab
@@ -359,8 +364,8 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate {
 }
 
 extension BrowserWindowController: NSMenuItemValidation {
-    /// "Bookmark This Page" and "Hide Sidebar" change: their titles say what they will do (also in
-    /// Search Commands). "Bookmark This Page" and "Toggle Reader Mode" need a web page. The group
+    /// "Bookmark This Page", "Hide Sidebar" and "Show Web Inspector" change: their titles say what they
+    /// will do (also in Search Commands). "Bookmark This Page" and "Toggle Reader Mode" need a web page. The group
     /// items need a normal tab (and a group, to remove from). A hidden sidebar cannot fold.
     func validateMenuItem(_ menuItem: NSMenuItem) -> Bool {
         if menuItem.action == #selector(toggleHidesSidebar(_:)) {
@@ -378,6 +383,11 @@ extension BrowserWindowController: NSMenuItemValidation {
         }
         if menuItem.action == #selector(toggleReader(_:)) {
             return store.selectedTab.flatMap(ReaderMode.menuItem) != nil
+        }
+        if menuItem.action == #selector(toggleWebInspector(_:)) {
+            guard let webView = store.selectedTab?.webView, WebInspector.isAvailable(for: webView) else { return false }
+            menuItem.title = WebInspector.isVisible(in: webView) ? "Hide Web Inspector" : "Show Web Inspector"
+            return true
         }
         if menuItem.action == #selector(toggleAdsOnSite(_:)) {
             let site = AdBlocker.site(for: store.selectedTab?.url)

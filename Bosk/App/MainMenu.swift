@@ -62,6 +62,9 @@ enum MainMenu {
         viewMenu.addItem(item("Zoom Out", #selector(BrowserWindowController.zoomOut(_:)), "-"))
         viewMenu.addItem(item("Actual Size", #selector(BrowserWindowController.actualSize(_:)), "0"))
         viewMenu.addItem(.separator())
+        viewMenu.addItem(item("Show Web Inspector", #selector(BrowserWindowController.toggleWebInspector(_:)), "i",
+                              [.command, .option]))
+        viewMenu.addItem(.separator())
         viewMenu.addItem(item("Hide Sidebar", #selector(BrowserWindowController.toggleHidesSidebar(_:)), "S"))
         viewMenu.addItem(item("Fold Sidebar", #selector(BrowserWindowController.toggleSidebarFold(_:)), "s"))
         viewMenu.addItem(.separator())
