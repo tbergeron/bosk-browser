@@ -57,6 +57,9 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate {
                 }
             }
         }
+        NotificationCenter.default.addObserver(forName: Preferences.hidesSidebarDidChange, object: nil, queue: .main) { [weak self] _ in
+            MainActor.assumeIsolated { self?.rootView.setSidebarHidden(Preferences.hidesSidebar) }
+        }
 
         if let frame = state?.frame, frame.count == 4 {
             window.setFrame(NSRect(x: frame[0], y: frame[1], width: frame[2], height: frame[3]), display: false)
@@ -238,6 +241,8 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate {
     @objc func toggleSidebar(_ sender: Any?) {
         setSidebarFolded(!rootView.isSidebarFolded, animated: true)
     }
+    /// A setting for all windows (Settings > Tabs).
+    @objc func toggleHidesSidebar(_ sender: Any?) { Preferences.hidesSidebar.toggle() }
     @objc func showFindBar(_ sender: Any?) {
         guard store.selectedTab?.webView != nil else { return }
         findBar.webView = store.selectedTab?.webView
@@ -350,9 +355,17 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate {
 }
 
 extension BrowserWindowController: NSMenuItemValidation {
-    /// Only "Bookmark This Page" and "Show Reader" change: their titles say what they will do,
-    /// and they need a web page. The group items need a normal tab (and a group, to remove from).
+    /// "Bookmark This Page", "Show Reader" and "Hide Sidebar" change: their titles say what they
+    /// will do (also in Search Commands), and the first two need a web page. The group items need
+    /// a normal tab (and a group, to remove from). A hidden sidebar cannot fold.
     func validateMenuItem(_ menuItem: NSMenuItem) -> Bool {
+        if menuItem.action == #selector(toggleHidesSidebar(_:)) {
+            menuItem.title = Preferences.hidesSidebar ? "Show Sidebar" : "Hide Sidebar"
+            return true
+        }
+        if menuItem.action == #selector(toggleSidebar(_:)) {
+            return !Preferences.hidesSidebar
+        }
         if menuItem.action == #selector(addTabToNewGroup(_:)) {
             return store.selectedTab.map { !$0.isPinned } ?? false
         }
@@ -443,6 +456,8 @@ private final class RootView: NSView {
     /// The open sidebar's width. The user changes it with a drag on the sidebar edge.
     private var openWidth = Preferences.sidebarWidth
     private(set) var isSidebarFolded = false
+    /// Hidden (a setting): no sidebar and no strip. The card fills the window, as when folded.
+    private var isSidebarHidden = Preferences.hidesSidebar
     private(set) var isFindBarVisible = false
     private var isAnimating = false
 
@@ -489,11 +504,17 @@ private final class RootView: NSView {
         layoutCard(sidebarWidth: sidebarWidth)
     }
 
-    private var sidebarWidth: CGFloat { isSidebarFolded ? Defaults.stripWidth : openWidth }
+    private var sidebarWidth: CGFloat {
+        isSidebarHidden ? 0 : isSidebarFolded ? Defaults.stripWidth : openWidth
+    }
+    private var cardFillsWindow: Bool { isSidebarFolded || isSidebarHidden }
+    /// When the card fills the window, its top bar is as tall as the open window's top:
+    /// the space above the card plus the card's top bar. So the page starts at the same height.
+    private static let fullTopBarHeight = Defaults.contentInset + Defaults.topBarHeight
 
     /// Folded, the strip starts under the top bar: the top bar goes under the window buttons.
     private var sidebarFrame: NSRect {
-        let top = isSidebarFolded ? Defaults.titleBarHeight : 0
+        let top = isSidebarFolded ? Self.fullTopBarHeight : 0
         return NSRect(x: 0, y: top, width: sidebarWidth, height: max(0, bounds.height - top))
     }
 
@@ -530,6 +551,11 @@ private final class RootView: NSView {
         DispatchQueue.main.async { [weak self] in self?.animateSidebar(to: target) }
     }
 
+    func setSidebarHidden(_ hidden: Bool) {
+        isSidebarHidden = hidden
+        needsLayout = true
+    }
+
     private func animateSidebar(to target: NSRect) {
         let signpost = performanceSignposter.beginInterval("Sidebar fold", id: performanceSignposter.makeSignpostID())
         NSAnimationContext.runAnimationGroup({ context in
@@ -550,8 +576,10 @@ private final class RootView: NSView {
     override func layout() {
         super.layout()
         // The window lays out its title bar before this view.
-        (window as? BoskWindow)?.centerWindowButtons()
+        centerWindowButtons()
         guard !isAnimating else { return }
+        sidebar.isHidden = isSidebarHidden
+        resizeHandle.isHidden = isSidebarHidden
         sidebar.frame = sidebarFrame
         resizeHandle.frame = NSRect(x: sidebarWidth - 4, y: sidebarFrame.minY, width: 8, height: sidebarFrame.height)
         layoutCard(sidebarWidth: sidebarWidth)
@@ -559,16 +587,18 @@ private final class RootView: NSView {
 
     /// Open: a rounded card next to the sidebar. Folded: the card fills the window, so the
     /// top bar goes under the window buttons, and the strip covers the card's left side
-    /// under the top bar.
+    /// under the top bar. Hidden: as folded, with no strip.
     private func layoutCard(sidebarWidth: CGFloat) {
         let inset = Defaults.contentInset
-        card.frame = isSidebarFolded
+        card.frame = cardFillsWindow
             ? bounds
             : NSRect(x: sidebarWidth, y: inset,
                      width: max(0, bounds.width - sidebarWidth - inset),
                      height: max(0, bounds.height - inset * 2))
-        card.layer?.cornerRadius = isSidebarFolded ? 0 : Defaults.contentCornerRadius
-        let barHeight = isSidebarFolded ? Defaults.titleBarHeight : Defaults.topBarHeight
+        card.layer?.cornerRadius = cardFillsWindow ? 0 : Defaults.contentCornerRadius
+        let barHeight = cardFillsWindow ? Self.fullTopBarHeight : Defaults.topBarHeight
+        // A fold moves the card here, not in `layout`, so the window buttons move with it.
+        centerWindowButtons()
         // The window buttons can go past the strip: Back starts after them.
         // In full screen they are hidden.
         let isFullScreen = window?.styleMask.contains(.fullScreen) ?? false
@@ -577,11 +607,19 @@ private final class RootView: NSView {
         let size = card.bounds.size
         // The card is not flipped: y = 0 is the bottom.
         topBar.frame = NSRect(x: 0, y: size.height - barHeight, width: size.width, height: barHeight)
-        let contentX = isSidebarFolded ? sidebarWidth : 0
+        let contentX = cardFillsWindow ? sidebarWidth : 0
         let contentWidth = max(0, size.width - contentX)
         let findHeight: CGFloat = isFindBarVisible ? 36 : 0
         findBar.frame = NSRect(x: contentX, y: size.height - barHeight - findHeight, width: contentWidth, height: findHeight)
         container.frame = NSRect(x: contentX, y: 0, width: contentWidth, height: size.height - barHeight - findHeight)
+    }
+
+    /// The window buttons are centered on the top bar line, where the card is now:
+    /// at the window top when folded, `contentInset` below it when open.
+    private func centerWindowButtons() {
+        let cardTop = bounds.maxY - card.frame.maxY
+        (window as? BoskWindow)?.centerWindowButtons(in: cardTop == 0 ? Self.fullTopBarHeight
+                                                                      : 2 * cardTop + Defaults.topBarHeight)
     }
 }
 

@@ -63,6 +63,8 @@ enum MainMenu {
         viewMenu.addItem(item("Actual Size", #selector(BrowserWindowController.actualSize(_:)), "0"))
         viewMenu.addItem(.separator())
         viewMenu.addItem(item("Fold Sidebar", #selector(BrowserWindowController.toggleSidebar(_:)), "s"))
+        viewMenu.addItem(withTitle: "Hide Sidebar", action: #selector(BrowserWindowController.toggleHidesSidebar(_:)),
+                         keyEquivalent: "")
         viewMenu.addItem(item("Enter Full Screen", #selector(NSWindow.toggleFullScreen(_:)), "f", [.command, .control]))
         add(viewMenu, title: "View", to: main)
 

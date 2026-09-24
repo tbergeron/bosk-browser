@@ -70,7 +70,8 @@ final class TabGroupRowView: NSTableRowView {
         super.layout()
         CATransaction.begin()
         CATransaction.setDisableActions(true)
-        backgroundLayer.frame = bounds.insetBy(dx: isCompact ? 8 : 6, dy: 1)
+        // Folded: 2 pt inside the tinted box.
+        backgroundLayer.frame = isCompact ? bounds.insetBy(dx: 10, dy: 6) : bounds.insetBy(dx: 6, dy: 1)
         // From the top of the header's background to past the bottom edge, where the first tab's bar
         // starts. With no tab below, it stops at the bottom of the background.
         let barTop = backgroundLayer.frame.minY
@@ -78,7 +79,8 @@ final class TabGroupRowView: NSTableRowView {
         barLayer.frame = NSRect(x: 0, y: barTop, width: 4, height: barBottom - barTop)
         // Rows are flipped: y = 0 and the "min Y" corners are at the top. The box goes on in the
         // tab rows below (TabRowView), so only its top corners are round, unless no tab follows.
-        tintLayer.frame = NSRect(x: 6, y: 2, width: bounds.width - 12, height: bounds.height - (endsHere ? 4 : 2))
+        // 4 pt (half the space between items in the strip) from the row edges, as a tab's box.
+        tintLayer.frame = NSRect(x: 6, y: 4, width: bounds.width - 12, height: bounds.height - (endsHere ? 8 : 4))
         tintLayer.maskedCorners = endsHere
             ? [.layerMinXMinYCorner, .layerMaxXMinYCorner, .layerMinXMaxYCorner, .layerMaxXMaxYCorner]
             : [.layerMinXMinYCorner, .layerMaxXMinYCorner]

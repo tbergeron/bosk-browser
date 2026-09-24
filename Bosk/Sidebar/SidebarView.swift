@@ -20,7 +20,7 @@ final class SidebarView: NSView, NSTableViewDataSource, NSTableViewDelegate {
     let pinnedGrid = PinnedGridView()
     private let scrollView = NSScrollView()
     private let tableView = SidebarTableView()
-    private let foldButton = NSButton()
+    private let foldButton = SidebarHoverButton()
     /// Folded: a narrow strip of icons.
     private(set) var isCompact = false
     /// The normal tab in a drag from the tab list.
@@ -103,6 +103,8 @@ final class SidebarView: NSView, NSTableViewDataSource, NSTableViewDelegate {
         isCompact = compact
         SidebarTooltip.hide()
         pinnedGrid.isCompact = compact
+        // In the strip, a row is as tall as a pinned tile plus the space between tiles (see `layout`).
+        tableView.rowHeight = compact ? pinnedGrid.tileHeight + pinnedGrid.spacing : Defaults.tabRowHeight
         foldButton.image = NSImage(systemSymbolName: compact ? "sidebar.right" : "sidebar.left",
                                    accessibilityDescription: compact ? "Unfold Sidebar" : "Fold Sidebar")
         reloadTabs()
@@ -159,14 +161,22 @@ final class SidebarView: NSView, NSTableViewDataSource, NSTableViewDelegate {
         super.layout()
         let padding: CGFloat = isCompact ? 8 : 10
         // The folded strip starts under the top bar, so its fold button is at the top.
+        // In the strip, all items (fold button, pinned tiles, groups, tabs, "New Tab") are centered
+        // in slots of the tile height, with the tile spacing between them, so the space is always equal.
+        let slot = pinnedGrid.tileHeight
+        let gap = pinnedGrid.spacing
+        // In the strip, the button's hover box is as wide as a tab's box (TabRowView), with the same
+        // space above it (to the top bar) as below it (to the first item).
         foldButton.frame = isCompact
-            ? NSRect(x: bounds.midX - 14, y: 8, width: 28, height: 28)
+            ? NSRect(x: 8, y: gap, width: bounds.width - 16, height: slot - gap)
             : NSRect(x: bounds.maxX - 38, y: (Defaults.sidebarHeaderHeight - 28) / 2, width: 28, height: 28)
-        var y = isCompact ? foldButton.frame.maxY + 6 : Defaults.sidebarHeaderHeight
+        var y = isCompact ? slot + gap : Defaults.sidebarHeaderHeight
         let gridWidth = bounds.width - padding * 2
         let gridHeight = pinnedGrid.height(forWidth: gridWidth)
         pinnedGrid.frame = NSRect(x: padding, y: y, width: gridWidth, height: gridHeight)
-        if gridHeight > 0 { y += gridHeight + 12 }
+        if gridHeight > 0 { y += gridHeight + (isCompact ? gap : 12) }
+        // A strip row has half the space above its item, and half below it.
+        if isCompact { y -= gap / 2 }
         scrollView.frame = NSRect(x: 0, y: y, width: bounds.width, height: max(0, bounds.height - y))
         tableView.tableColumns.first?.width = bounds.width
     }
@@ -462,6 +472,55 @@ private final class SidebarTableView: NSTableView {
 
     override func canDragRows(with rowIndexes: IndexSet, at mouseDownPoint: NSPoint) -> Bool {
         rowIndexes.allSatisfy { canDragRow?($0) ?? true } && super.canDragRows(with: rowIndexes, at: mouseDownPoint)
+    }
+}
+
+/// The fold button. On hover it shows the same box as a tab row (TabRowView).
+@MainActor
+private final class SidebarHoverButton: NSButton {
+    private var isHovered = false
+
+    override init(frame: NSRect) {
+        super.init(frame: frame)
+        wantsLayer = true
+        layer?.cornerRadius = 8
+        layer?.cornerCurve = .continuous
+    }
+
+    @available(*, unavailable)
+    required init?(coder: NSCoder) { fatalError("init(coder:) is not used") }
+
+    private func updateColors() {
+        CATransaction.begin()
+        CATransaction.setAnimationDuration(0.12)
+        layer?.backgroundColor = isHovered ? resolved(SidebarColors.hover) : NSColor.clear.cgColor
+        CATransaction.commit()
+    }
+
+    override func viewDidChangeEffectiveAppearance() {
+        super.viewDidChangeEffectiveAppearance()
+        updateColors()
+    }
+
+    override func updateTrackingAreas() {
+        super.updateTrackingAreas()
+        trackingAreas.filter { $0.owner === self }.forEach(removeTrackingArea)
+        addTrackingArea(NSTrackingArea(rect: bounds, options: [.mouseEnteredAndExited, .activeInActiveApp, .inVisibleRect],
+                                       owner: self))
+        // A click folds or unfolds the sidebar, so the button moves away from the mouse and gets
+        // no "exited" event. Find the hover state again from the mouse location.
+        if let window {
+            setHovered(bounds.contains(convert(window.mouseLocationOutsideOfEventStream, from: nil)))
+        }
+    }
+
+    override func mouseEntered(with event: NSEvent) { setHovered(true) }
+    override func mouseExited(with event: NSEvent) { setHovered(false) }
+
+    private func setHovered(_ hovered: Bool) {
+        guard hovered != isHovered else { return }
+        isHovered = hovered
+        updateColors()
     }
 }
 

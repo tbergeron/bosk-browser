@@ -28,13 +28,11 @@ enum Defaults {
 
     static let sessionSaveDelay: Duration = .seconds(2)
 
-    /// A background tab sleeps after this idle time (see SleepPolicy).
-    static let tabSleepIdleLimit: TimeInterval = debugOverride("BoskSleepAfterSeconds") ?? 30 * 60
+    /// Debug builds only: replaces the idle time chosen in Settings (Preferences.tabSleepAfter).
+    static let tabSleepIdleLimitOverride: TimeInterval? = debugOverride("BoskSleepAfterSeconds")
     /// Idle time before sleep when macOS reports memory pressure.
     static let tabSleepPressureIdleLimit: TimeInterval = 5 * 60
-    static let tabSleepCheckInterval: TimeInterval = min(60, tabSleepIdleLimit / 2)
-    /// Width in pixels (at most) of the page picture shown while a sleeping tab wakes.
-    static let snapshotWidth: CGFloat = 900
+    static let tabSleepCheckInterval: TimeInterval = min(60, (tabSleepIdleLimitOverride ?? 60 * 60) / 2)
     /// Reloads of the selected tab after its page process stops, in one minute.
     static let crashReloadLimit = 3
     /// Saved reader articles older than this are deleted at launch.
@@ -44,12 +42,15 @@ enum Defaults {
                              URL(string: "https://easylist.to/easylist/easyprivacy.txt")!]
     /// The ad blocker downloads its lists again after this time.
     static let adListUpdateInterval: TimeInterval = 7 * 24 * 60 * 60
+    /// Sites where the ad blocker is off until the user changes the per-site switch.
+    /// EasyPrivacy breaks the Apple Account sign-in form on appleid.apple.com.
+    static let adsAllowedSites: Set<String> = ["appleid.apple.com"]
 
-    /// The window buttons are centered in this height, as in a window with a standard toolbar.
-    /// The folded top bar has this height.
-    static let titleBarHeight: CGFloat = 52
-    /// The top bar in the card. The card starts `contentInset` below the window top, so this
-    /// height keeps the top bar buttons on the same line as the window buttons.
+    /// Sidebar open: the window buttons are centered in this height.
+    static let titleBarHeight: CGFloat = 48
+    /// The top bar in the card. Open, the card starts `contentInset` below the window top, so this
+    /// height keeps the top bar buttons on the same line as the window buttons. Folded, the card
+    /// starts at the window top, and its top bar is `contentInset` taller, so the page starts at the same height.
     static let topBarHeight: CGFloat = titleBarHeight - 2 * contentInset
     /// The open sidebar's width until the user drags its edge (see Preferences.sidebarWidth).
     static let sidebarWidth: CGFloat = 250

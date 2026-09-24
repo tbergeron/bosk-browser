@@ -29,7 +29,7 @@ final class Tab: NSObject {
     var lastActive = Date()
     /// WebKit's saved back/forward list and scroll positions (`interactionState`).
     private(set) var sessionState: Data?
-    /// A small JPEG of the page, taken when the user leaves the tab. It is shown while a
+    /// A JPEG of the page, taken when the user leaves the tab. It is shown while a
     /// sleeping tab wakes up. JPEG data, not an image, so sleeping tabs stay small in memory.
     private(set) var snapshotData: Data?
     /// The frames with text typed in a form and not sent yet. Set by a page script.
@@ -141,16 +141,13 @@ final class Tab: NSObject {
     /// Saves a picture of the page for the next wake. Call before the tab leaves the screen.
     func captureSnapshot() {
         guard let webView, webView.window != nil, !webView.bounds.isEmpty else { return }
+        // Full size at the screen's scale, so the picture is sharp in place of the page.
         let configuration = WKSnapshotConfiguration()
-        // WebKit takes the width in points and makes 2 pixels per point on Retina screens.
-        // The picture shows for about a second, so 1x is enough, at a quarter of the memory.
-        let scale = webView.window?.backingScaleFactor ?? 1
-        configuration.snapshotWidth = NSNumber(value: Double(min(webView.bounds.width, Defaults.snapshotWidth) / scale))
         webView.takeSnapshot(with: configuration) { [weak self] image, _ in
             guard let cgImage = image?.cgImage(forProposedRect: nil, context: nil, hints: nil) else { return }
             Task.detached(priority: .utility) {
                 let data = NSBitmapImageRep(cgImage: cgImage)
-                    .representation(using: .jpeg, properties: [.compressionFactor: 0.6])
+                    .representation(using: .jpeg, properties: [.compressionFactor: 0.9])
                 await MainActor.run { self?.snapshotData = data }
             }
         }

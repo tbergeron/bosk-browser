@@ -49,6 +49,7 @@ final class TabSleepManager {
                     check(pressure: next)
                 }
             }
+            let idleLimit = Defaults.tabSleepIdleLimitOverride ?? Preferences.tabSleepAfter
             let stores = storesProvider?() ?? []
             var tabsByID: [UUID: Tab] = [:]
             var selectedIDs: Set<UUID> = []
@@ -61,7 +62,7 @@ final class TabSleepManager {
             let now = Date()
             let candidates = SleepPolicy.tabsToSleep(
                 tabsByID.values.map { info(for: $0, isSelected: selectedIDs.contains($0.id), isPlayingMedia: false) },
-                now: now, idleLimit: Defaults.tabSleepIdleLimit,
+                now: now, idleLimit: idleLimit,
                 pressureIdleLimit: Defaults.tabSleepPressureIdleLimit, pressure: pressure)
             guard !candidates.isEmpty else { return }
             // Ask the pages at the same time: each answer can take up to the timeout.
@@ -74,7 +75,7 @@ final class TabSleepManager {
                 for await info in group { infos.append(info) }
                 return infos
             }
-            let ids = SleepPolicy.tabsToSleep(infos, now: Date(), idleLimit: Defaults.tabSleepIdleLimit,
+            let ids = SleepPolicy.tabsToSleep(infos, now: Date(), idleLimit: idleLimit,
                                               pressureIdleLimit: Defaults.tabSleepPressureIdleLimit,
                                               pressure: pressure)
             for id in ids {

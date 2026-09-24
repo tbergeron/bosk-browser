@@ -96,13 +96,16 @@ final class TabRowView: NSTableRowView {
         super.layout()
         CATransaction.begin()
         CATransaction.setDisableActions(true)
-        backgroundLayer.frame = bounds.insetBy(dx: isCompact ? 8 : 6, dy: 1)
+        // Folded: the row has 4 pt (half the space between items) above and below the tab's box.
+        // In a group, the box is 2 pt smaller, so it stays inside the group's tinted box.
+        backgroundLayer.frame = !isCompact ? bounds.insetBy(dx: 6, dy: 1)
+            : groupColor == nil ? bounds.insetBy(dx: 8, dy: 4) : bounds.insetBy(dx: 10, dy: 6)
         // Past the row edges, so the bars of the rows in a group join into one bar. On the last row,
         // the bar stops at the bottom of the tab's background. Rows are flipped: y = 0 is the top.
         let barBottom = isLastInGroup ? backgroundLayer.frame.maxY : bounds.height + 2
         groupBarLayer.frame = NSRect(x: 0, y: -2, width: 4, height: barBottom + 2)
         // The last row closes the box with round bottom corners ("max Y" is the bottom here).
-        groupTintLayer.frame = NSRect(x: 6, y: 0, width: bounds.width - 12, height: bounds.height - (isLastInGroup ? 2 : 0))
+        groupTintLayer.frame = NSRect(x: 6, y: 0, width: bounds.width - 12, height: bounds.height - (isLastInGroup ? 4 : 0))
         groupTintLayer.maskedCorners = isLastInGroup ? [.layerMinXMaxYCorner, .layerMaxXMaxYCorner] : []
         let iconSize: CGFloat = 16
         let indent: CGFloat = groupColor == nil ? 0 : 8

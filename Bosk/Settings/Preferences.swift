@@ -11,9 +11,11 @@ enum Preferences {
     /// WebKit's own key: it reads it for autocorrect in pages.
     private static let spellingKey = "WebAutomaticSpellingCorrectionEnabled"
     private static let sleepsTabsKey = "BoskSleepsTabs"
+    private static let tabSleepAfterKey = "BoskTabSleepAfter"
     private static let downloadFolderKey = "BoskDownloadFolder"
     private static let asksWhereToSaveKey = "BoskAsksWhereToSave"
     private static let sidebarWidthKey = "BoskSidebarWidth"
+    private static let hidesSidebarKey = "BoskHidesSidebar"
     private static let extensionOrderKey = "BoskExtensionOrder"
     private static let unpinnedExtensionsKey = "BoskUnpinnedExtensions"
     private static let blocksAdsKey = "BoskBlocksAds"
@@ -47,6 +49,27 @@ enum Preferences {
         set { UserDefaults.standard.set(newValue, forKey: sleepsTabsKey) }
     }
 
+    static let tabSleepChoices: [TimeInterval] = [15 * 60, 30 * 60, 60 * 60, 2 * 60 * 60, 4 * 60 * 60,
+                                                  8 * 60 * 60, 24 * 60 * 60]
+
+    /// Idle time before a background tab sleeps. 30 minutes when the user never chose,
+    /// or when the saved value is not one of `tabSleepChoices`.
+    static var tabSleepAfter: TimeInterval {
+        get {
+            let value = UserDefaults.standard.double(forKey: tabSleepAfterKey)
+            return tabSleepChoices.contains(value) ? value : 30 * 60
+        }
+        set { UserDefaults.standard.set(newValue, forKey: tabSleepAfterKey) }
+    }
+
+    /// "30 minutes", "1 hour", "1 day"
+    static func tabSleepLabel(_ interval: TimeInterval) -> String {
+        let formatter = DateComponentsFormatter()
+        formatter.unitsStyle = .full
+        formatter.allowedUnits = [.minute, .hour, .day]
+        return formatter.string(from: interval) ?? ""
+    }
+
     /// ~/Downloads when the user never chose, or when the chosen folder is gone.
     static var downloadFolder: URL {
         get {
@@ -66,9 +89,10 @@ enum Preferences {
         set { UserDefaults.standard.set(newValue, forKey: blocksAdsKey) }
     }
 
-    /// Sites where the user allows ads (see AdBlocker.site(for:)).
+    /// Sites where the user allows ads (see AdBlocker.site(for:)). `Defaults.adsAllowedSites`
+    /// until the user changes the per-site switch.
     static var adsAllowedSites: Set<String> {
-        get { Set(UserDefaults.standard.stringArray(forKey: adsAllowedSitesKey) ?? []) }
+        get { UserDefaults.standard.stringArray(forKey: adsAllowedSitesKey).map(Set.init) ?? Defaults.adsAllowedSites }
         set { UserDefaults.standard.set(newValue.sorted(), forKey: adsAllowedSitesKey) }
     }
 
@@ -85,6 +109,18 @@ enum Preferences {
         }
         set { UserDefaults.standard.set(Double(newValue), forKey: sidebarWidthKey) }
     }
+
+    /// No sidebar in any window: the user switches tabs with the command bar.
+    static var hidesSidebar: Bool {
+        get { UserDefaults.standard.bool(forKey: hidesSidebarKey) }
+        set {
+            UserDefaults.standard.set(newValue, forKey: hidesSidebarKey)
+            NotificationCenter.default.post(name: hidesSidebarDidChange, object: nil)
+        }
+    }
+
+    /// Posted when `hidesSidebar` changes; windows and Settings update.
+    static let hidesSidebarDidChange = Notification.Name("BoskHidesSidebarDidChange")
 
     /// Extension IDs in the user's top bar order (see ExtensionToolbarOrder).
     static var extensionOrder: [String] {

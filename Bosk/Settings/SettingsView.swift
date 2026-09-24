@@ -176,10 +176,25 @@ private struct TabsPane: View {
     var body: some View {
         SettingsCard {
             SettingsRow(title: "Sleep tabs you aren't using",
-                        subtitle: "After half an hour away they come back where you left them. "
+                        subtitle: "They come back where you left them. "
                             + "Pinned tabs, sound, calls and anything typed stay awake.") {
                 Toggle("Sleep tabs you aren't using", isOn: Binding(get: { model.sleepsTabs },
                                                                     set: { model.setSleepsTabs($0) }))
+                    .toggleStyle(.switch).labelsHidden()
+            }
+            SettingsRow(title: "Sleep after", subtitle: "Time away from a tab. When the Mac is low on memory, "
+                            + "tabs sleep sooner.") {
+                Picker("Sleep after", selection: Binding(get: { model.tabSleepAfter },
+                                                         set: { model.setTabSleepAfter($0) })) {
+                    ForEach(Preferences.tabSleepChoices, id: \.self) { Text(Preferences.tabSleepLabel($0)).tag($0) }
+                }
+                .labelsHidden().fixedSize()
+                .disabled(!model.sleepsTabs)
+            }
+            SettingsRow(title: "Hide the sidebar",
+                        subtitle: "Pages use the full window. Switch tabs with Search Tabs (⇧⌘A) or ⌃Tab.") {
+                Toggle("Hide the sidebar", isOn: Binding(get: { model.hidesSidebar },
+                                                         set: { model.setHidesSidebar($0) }))
                     .toggleStyle(.switch).labelsHidden()
             }
         }

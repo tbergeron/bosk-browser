@@ -53,6 +53,8 @@ final class SettingsModel {
     var appearance = Preferences.appearance
     var correctsSpelling = Preferences.correctsSpelling
     var sleepsTabs = Preferences.sleepsTabs
+    var tabSleepAfter = Preferences.tabSleepAfter
+    var hidesSidebar = Preferences.hidesSidebar
     var blocksAds = Preferences.blocksAds
     var adListsUpdated = AdBlocker.shared.listsUpdated
     var downloadFolder = Preferences.downloadFolder
@@ -69,6 +71,10 @@ final class SettingsModel {
         AdBlocker.shared.addObserver(self) { [weak self] in
             self?.blocksAds = Preferences.blocksAds
             self?.adListsUpdated = AdBlocker.shared.listsUpdated
+        }
+        // The Tabs menu changes it too.
+        NotificationCenter.default.addObserver(forName: Preferences.hidesSidebarDidChange, object: nil, queue: .main) { [weak self] _ in
+            MainActor.assumeIsolated { self?.hidesSidebar = Preferences.hidesSidebar }
         }
     }
 
@@ -133,6 +139,16 @@ final class SettingsModel {
     func setSleepsTabs(_ value: Bool) {
         Preferences.sleepsTabs = value
         sleepsTabs = value
+    }
+
+    func setTabSleepAfter(_ value: TimeInterval) {
+        Preferences.tabSleepAfter = value
+        tabSleepAfter = value
+    }
+
+    func setHidesSidebar(_ value: Bool) {
+        Preferences.hidesSidebar = value
+        hidesSidebar = value
     }
 
     // MARK: Extensions

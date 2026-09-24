@@ -36,7 +36,7 @@ public enum SleepPolicy {
     }
 
     /// - Parameters:
-    ///   - idleLimit: Normal sleep time (30 minutes in Bosk).
+    ///   - idleLimit: Normal sleep time (the user chooses it in Bosk; 30 minutes by default).
     ///   - pressureIdleLimit: Sleep time when macOS reports memory pressure.
     /// - Returns: Tab IDs to sleep, oldest first.
     public static func tabsToSleep(_ tabs: [TabInfo], now: Date, idleLimit: TimeInterval,
