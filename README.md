@@ -12,6 +12,7 @@ A small, fast, opinionated web browser for macOS. Built on WebKit.
 - Tabs sleep after 30 minutes idle to keep memory low. Pinned tabs stay awake. Settings can turn sleep off.
 - Chrome extension support through WebKit's `WKWebExtension`.
 - A built-in ad and tracker blocker (EasyList and EasyPrivacy), with a switch in Settings and one per site.
+- A Reader Mode, powered by [Defuddle](https://github.com/kepano/defuddle) by [kepano](https://github.com/kepano).
 
 Requires macOS 26 or later.
 
