@@ -1,13 +1,44 @@
 import AppKit
+import BoskCore
 
 /// The browser window. Extension keyboard commands (manifest "commands") are checked
-/// before the menu shortcuts.
+/// before the web page and the menu shortcuts, but an extension cannot take a key that
+/// a menu bar item uses.
 final class BoskWindow: NSWindow {
     override func performKeyEquivalent(with event: NSEvent) -> Bool {
-        for context in ExtensionManager.shared.loadedContexts where context.performCommand(for: event) {
-            return true
+        if !Self.menuUses(event, in: NSApp.mainMenu) {
+            for context in ExtensionManager.shared.loadedContexts where context.performCommand(for: event) {
+                return true
+            }
         }
         return super.performKeyEquivalent(with: event)
+    }
+
+    /// True if an item in `menu` (or its submenus) has the shortcut of `event`. This only
+    /// checks; the menu gets the event after the web page, as before.
+    private static func menuUses(_ event: NSEvent, in menu: NSMenu?) -> Bool {
+        // Caps Lock gives an uppercase letter with no Shift flag.
+        let characters = event.charactersIgnoringModifiers ?? ""
+        let key = shortcutText(key: event.modifierFlags.contains(.shift) ? characters : characters.lowercased(),
+                               modifiers: event.modifierFlags)
+        guard !key.isEmpty else { return false }
+        func search(_ menu: NSMenu) -> Bool {
+            menu.items.contains { item in
+                shortcutText(key: item.keyEquivalent, modifiers: item.keyEquivalentModifierMask) == key
+                    || item.submenu.map(search) == true
+            }
+        }
+        return menu.map(search) ?? false
+    }
+
+    /// The same text for an event and a menu item with the same keys. Shift is kept only for
+    /// letters: "}" already includes Shift, and a "+" item (no Shift flag) must match Shift+=.
+    private static func shortcutText(key: String, modifiers: NSEvent.ModifierFlags) -> String {
+        let isLetter = key.lowercased() != key.uppercased()
+        return SuggestionRanker.shortcutText(key: key, control: modifiers.contains(.control),
+                                             option: modifiers.contains(.option),
+                                             shift: isLetter && modifiers.contains(.shift),
+                                             command: modifiers.contains(.command))
     }
 
     override init(contentRect: NSRect, styleMask style: NSWindow.StyleMask,
