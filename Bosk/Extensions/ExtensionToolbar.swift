@@ -363,6 +363,8 @@ private final class BadgeButton: NSButton {
         badgeLayer.cornerRadius = 5
         badgeLayer.contentsScale = 2
         badgeLayer.isHidden = true
+        // The button adds its image layer later, so the badge must stay on top.
+        badgeLayer.zPosition = 1
         layer?.addSublayer(badgeLayer)
     }
 
