@@ -42,6 +42,13 @@ final class DownloadManager: NSObject, WKDownloadDelegate {
         observers[ObjectIdentifier(owner)] = nil
     }
 
+    /// Moves the file to the Trash (the user can get it back) and takes it off the list.
+    func delete(_ item: Item) {
+        if let url = item.destination { try? FileManager.default.trashItem(at: url, resultingItemURL: nil) }
+        items.removeAll { $0 === item }
+        changed()
+    }
+
     private func changed() {
         observers.values.forEach { $0() }
     }
