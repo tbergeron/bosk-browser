@@ -7,13 +7,15 @@ A small, fast, opinionated web browser for macOS. Built on WebKit.
 - Tabs in a sidebar, pinned tabs as a grid, a sidebar that folds into a strip.
 - Tabs sleep after 30 minutes idle to keep memory low. Pinned tabs stay awake. Settings can turn sleep off.
 - Chrome extension support through WebKit's `WKWebExtension`.
+- A built-in ad and tracker blocker (EasyList and EasyPrivacy), with a switch in Settings and one per site.
 
 Requires macOS 26 or later.
 
 ## Privacy
 
 Bosk has no backend and no account is needed. It collects nothing about you. Your history, tabs and
-settings stay on your Mac.
+settings stay on your Mac. The ad blocker downloads its filter lists from easylist.to once a week,
+with no cookies and nothing about you in the request.
 
 ## Build
 

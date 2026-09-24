@@ -111,7 +111,12 @@ final class TopBar: NSView {
         // visible button is as far from the right edge as Back is from the left edge.
         for view in accessoryViews.reversed() {
             let size = view.fittingSize
-            guard size.width > 0 else { continue }
+            // A divider with nothing after it separates nothing.
+            let isLoneDivider = view is TopBarDivider && right == bounds.maxX - 10
+            guard size.width > 0, !isLoneDivider else {
+                view.frame = .zero
+                continue
+            }
             right -= size.width
             view.frame = NSRect(x: right, y: midY - size.height / 2, width: size.width, height: size.height)
             right -= 6
@@ -130,6 +135,16 @@ final class TopBar: NSView {
     }
 
     @objc private func addressClicked() { onAddressClick?() }
+}
+
+/// A short vertical line between groups of top bar buttons.
+final class TopBarDivider: NSView {
+    override var fittingSize: NSSize { NSSize(width: 1, height: 16) }
+    override var wantsUpdateLayer: Bool { true }
+
+    override func updateLayer() {
+        layer?.backgroundColor = NSColor.separatorColor.cgColor
+    }
 }
 
 extension TopBar: NSMenuDelegate {

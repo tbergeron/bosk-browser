@@ -13,6 +13,7 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate {
     private let findBar = FindBar()
     private let extensionActions = ExtensionActionsView()
     private let addToBoskButton = AddToBoskButton()
+    private let adBlockerButton = AdBlockerButton()
     private let sidebar: SidebarView
     private let rootView: RootView
     private lazy var commandBar = CommandBarPanel()
@@ -44,7 +45,7 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate {
         store.window = window
         findBar.onClose = { [weak self] in self?.hideFindBar() }
         extensionActions.currentTab = { [weak self] in self?.store.selectedTab }
-        topBar.setAccessoryViews([addToBoskButton, extensionActions, DownloadsButton()])
+        topBar.setAccessoryViews([addToBoskButton, adBlockerButton, TopBarDivider(), extensionActions, DownloadsButton()])
         ExtensionManager.shared.addObserver(self) { [weak self] in self?.extensionActions.reload() }
         NotificationCenter.default.addObserver(forName: PageZoom.didChangeDefault, object: nil, queue: .main) { [weak self] _ in
             MainActor.assumeIsolated {
@@ -281,6 +282,19 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate {
         ReaderMode.toggle(in: tab)
     }
 
+    /// From the shield menu in the top bar. The page reloads when the change is on the tabs.
+    @objc func toggleAdBlocker(_ sender: Any?) {
+        let tab = store.selectedTab
+        AdBlocker.shared.setOn(!Preferences.blocksAds) { [weak tab] in tab?.webView?.reload() }
+    }
+
+    @objc func toggleAdsOnSite(_ sender: Any?) {
+        guard let tab = store.selectedTab, let site = AdBlocker.site(for: tab.url) else { return }
+        AdBlocker.shared.setAllowsAds(!AdBlocker.shared.allowsAds(on: site), on: site) { [weak tab] in
+            tab?.webView?.reload()
+        }
+    }
+
     @objc func togglePinTab(_ sender: Any?) {
         guard let tab = store.selectedTab else { return }
         if tab.isPinned { store.unpin(tab) } else { store.pin(tab) }
@@ -330,6 +344,11 @@ extension BrowserWindowController: NSMenuItemValidation {
             menuItem.title = item?.title ?? "Show Reader"
             return item != nil
         }
+        if menuItem.action == #selector(toggleAdsOnSite(_:)) {
+            let site = AdBlocker.site(for: store.selectedTab?.url)
+            menuItem.title = site.map(AdBlocker.shared.allowsAds) == true ? "Block Ads on This Site" : "Allow Ads on This Site"
+            return Preferences.blocksAds && site != nil
+        }
         guard menuItem.action == #selector(bookmarkPage(_:)) else { return true }
         guard let url = store.selectedTab?.url, ["http", "https"].contains(url.scheme ?? "") else {
             menuItem.title = "Bookmark This Page"
@@ -355,7 +374,10 @@ extension BrowserWindowController: TabStoreDelegate {
         guard tab === store.selectedTab else { return }
         if change == .progress { return topBar.updateProgress(with: tab) }
         if change == .hoveredLink { return container.showStatus(tab.hoveredLink?.absoluteString) }
-        if change == .url { addToBoskButton.update(for: tab.url) }
+        if change == .url {
+            addToBoskButton.update(for: tab.url)
+            adBlockerButton.update(for: tab.url)
+        }
         if change == .title || change == .url { window?.title = tab.displayTitle }
         if change == .sleepState { container.show(tab.webView) }
         // Keep the page picture until the woken page has loaded.
@@ -370,6 +392,7 @@ extension BrowserWindowController: TabStoreDelegate {
         previous?.hoveredLink = nil
         container.showStatus(nil)
         addToBoskButton.update(for: tab?.url)
+        adBlockerButton.update(for: tab?.url)
         extensionActions.reload()
         if rootView.isFindBarVisible { hideFindBar() }
         if let tab, tab.isAsleep, let data = tab.snapshotData {

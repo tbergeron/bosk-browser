@@ -51,6 +51,8 @@ final class SettingsModel {
     var appearance = Preferences.appearance
     var correctsSpelling = Preferences.correctsSpelling
     var sleepsTabs = Preferences.sleepsTabs
+    var blocksAds = Preferences.blocksAds
+    var adListsUpdated = AdBlocker.shared.listsUpdated
     var downloadFolder = Preferences.downloadFolder
     var asksWhereToSave = Preferences.asksWhereToSave
     var extensions: [ExtensionRow] = []
@@ -62,6 +64,10 @@ final class SettingsModel {
     init() {
         refresh()
         ExtensionManager.shared.addObserver(self) { [weak self] in self?.refresh() }
+        AdBlocker.shared.addObserver(self) { [weak self] in
+            self?.blocksAds = Preferences.blocksAds
+            self?.adListsUpdated = AdBlocker.shared.listsUpdated
+        }
     }
 
     func refresh() {
@@ -204,6 +210,10 @@ final class SettingsModel {
     }
 
     // MARK: Privacy
+
+    func setBlocksAds(_ value: Bool) {
+        AdBlocker.shared.setOn(value)
+    }
 
     func clearHistory() {
         guard confirm("Clear all history?", "Command bar suggestions forget every page you visited.",

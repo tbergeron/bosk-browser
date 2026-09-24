@@ -16,6 +16,8 @@ enum Preferences {
     private static let sidebarWidthKey = "BoskSidebarWidth"
     private static let extensionOrderKey = "BoskExtensionOrder"
     private static let unpinnedExtensionsKey = "BoskUnpinnedExtensions"
+    private static let blocksAdsKey = "BoskBlocksAds"
+    private static let adsAllowedSitesKey = "BoskAdsAllowedSites"
 
     static var appearance: Appearance {
         get { UserDefaults.standard.string(forKey: appearanceKey).flatMap(Appearance.init) ?? .system }
@@ -56,6 +58,18 @@ enum Preferences {
             return .downloadsDirectory
         }
         set { UserDefaults.standard.set(newValue.path, forKey: downloadFolderKey) }
+    }
+
+    /// The built-in ad blocker (AdBlocker). On when the user never chose.
+    static var blocksAds: Bool {
+        get { UserDefaults.standard.object(forKey: blocksAdsKey) as? Bool ?? true }
+        set { UserDefaults.standard.set(newValue, forKey: blocksAdsKey) }
+    }
+
+    /// Sites where the user allows ads (see AdBlocker.site(for:)).
+    static var adsAllowedSites: Set<String> {
+        get { Set(UserDefaults.standard.stringArray(forKey: adsAllowedSitesKey) ?? []) }
+        set { UserDefaults.standard.set(newValue.sorted(), forKey: adsAllowedSitesKey) }
     }
 
     static var asksWhereToSave: Bool {

@@ -16,6 +16,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
     func applicationDidFinishLaunching(_ notification: Notification) {
         NSApp.mainMenu = MainMenu.make()
         BookmarkStore.shared.load()
+        // Before the session, so the saved rule list is on the tabs as soon as possible.
+        AdBlocker.shared.start()
         Preferences.applyAppearance()
         Updater.start()
         SessionStore.shared.snapshotProvider = { [weak self] in

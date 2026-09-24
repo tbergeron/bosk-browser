@@ -278,6 +278,19 @@ private struct PrivacyPane: View {
 
     var body: some View {
         SettingsCard {
+            SettingsRow(title: "Block ads and trackers",
+                        subtitle: "Use the shield in the address bar to allow ads on one site") {
+                Toggle("Block ads and trackers", isOn: Binding(get: { model.blocksAds },
+                                                               set: { model.setBlocksAds($0) }))
+                    .toggleStyle(.switch).labelsHidden()
+            }
+            SettingsRow(title: "Filter lists", subtitle: "EasyList and EasyPrivacy, updated each week") {
+                Text(model.adListsUpdated?.formatted(date: .abbreviated, time: .shortened) ?? "Not downloaded yet")
+                    .foregroundStyle(.secondary)
+            }
+        }
+
+        SettingsCard {
             SettingsRow(title: "History", subtitle: "Every address you have been to") {
                 Button("Clear") { model.clearHistory() }.pillButton()
             }

@@ -19,6 +19,9 @@ extension Tab: WKNavigationDelegate {
         }
         // Reader pages show HTML from the web page: none of its script may run.
         if navigationAction.request.url?.scheme == ReaderPage.scheme { preferences.allowsContentJavaScript = false }
+        if navigationAction.targetFrame?.isMainFrame != false {
+            AdBlocker.shared.configure(preferences, for: navigationAction.request.url)
+        }
         return (.allow, preferences)
     }
 

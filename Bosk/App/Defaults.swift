@@ -39,6 +39,11 @@ enum Defaults {
     static let crashReloadLimit = 3
     /// Saved reader articles older than this are deleted at launch.
     static let readerArticleLifetime: TimeInterval = 30 * 24 * 60 * 60
+    /// The ad blocker's filter lists: ads, then trackers.
+    static let adListURLs = [URL(string: "https://easylist.to/easylist/easylist.txt")!,
+                             URL(string: "https://easylist.to/easylist/easyprivacy.txt")!]
+    /// The ad blocker downloads its lists again after this time.
+    static let adListUpdateInterval: TimeInterval = 7 * 24 * 60 * 60
 
     /// The window buttons are centered in this height, as in a window with a standard toolbar.
     /// The folded top bar has this height.
