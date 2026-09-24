@@ -12,6 +12,14 @@ enum SidebarColors {
     static let selected = NSColor(name: nil) { appearance in
         appearance.isDark ? NSColor.white.withAlphaComponent(0.14) : NSColor.white.withAlphaComponent(0.75)
     }
+    /// The current tab's box. Solid, so a group's tint does not show through it.
+    static let currentTab = NSColor(name: nil) { appearance in
+        appearance.isDark ? NSColor(srgbRed: 0.30, green: 0.30, blue: 0.31, alpha: 1) : .white
+    }
+    /// The ring around the current tab's box. It stays clear on every group tint.
+    static let currentTabRing = NSColor(name: nil) { appearance in
+        appearance.isDark ? NSColor.white.withAlphaComponent(0.4) : NSColor.black.withAlphaComponent(0.15)
+    }
     static let hover = NSColor(name: nil) { appearance in
         appearance.isDark ? NSColor.white.withAlphaComponent(0.07) : NSColor.white.withAlphaComponent(0.4)
     }

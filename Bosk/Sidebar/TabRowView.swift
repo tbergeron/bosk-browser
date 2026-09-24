@@ -126,15 +126,19 @@ final class TabRowView: NSTableRowView {
         CATransaction.begin()
         CATransaction.setAnimationDuration(0.12)
         if isCurrent {
-            backgroundLayer.backgroundColor = resolved(SidebarColors.selected)
+            backgroundLayer.backgroundColor = resolved(SidebarColors.currentTab)
+            backgroundLayer.borderColor = resolved(SidebarColors.currentTabRing)
+            backgroundLayer.borderWidth = 1
             backgroundLayer.shadowOpacity = effectiveAppearance.isDark ? 0 : 0.08
             backgroundLayer.shadowRadius = 2
             backgroundLayer.shadowOffset = CGSize(width: 0, height: -1)
         } else if isMultiSelected {
             backgroundLayer.backgroundColor = resolved(SidebarColors.multiSelected)
+            backgroundLayer.borderWidth = 0
             backgroundLayer.shadowOpacity = 0
         } else {
             backgroundLayer.backgroundColor = isHovered ? resolved(SidebarColors.hover) : NSColor.clear.cgColor
+            backgroundLayer.borderWidth = 0
             backgroundLayer.shadowOpacity = 0
         }
         if let groupColor {
