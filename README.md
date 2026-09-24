@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="docs/icon.png" width="128" height="128" alt="Bosk icon">
+</p>
+
 # Bosk
 
 A small, fast, opinionated web browser for macOS. Built on WebKit.
