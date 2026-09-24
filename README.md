@@ -4,23 +4,23 @@
 
 # Bosk
 
-A small, fast, opinionated web browser for macOS. Built on WebKit.
+A small, fast, opinionated web browser for macOS, built on WebKit.
 
-**Private by design.** No telemetry. No bloat. Just pure raw speed.
+**Private by design.** No telemetry and no bloat. Speed comes first.
 
-- Tabs in a sidebar, pinned tabs as a grid, a sidebar that folds into a strip.
-- Tabs sleep after 30 minutes idle to keep memory low. Pinned tabs stay awake. Settings can turn sleep off.
-- Chrome extension support through WebKit's `WKWebExtension`.
-- A built-in ad and tracker blocker (EasyList and EasyPrivacy), with a switch in Settings and one per site.
-- A Reader Mode, powered by [Defuddle](https://github.com/kepano/defuddle) by [kepano](https://github.com/kepano).
+- Tabs live in a sidebar and pinned tabs sit in a grid. The sidebar can fold into a strip, or you can hide it.
+- Tabs you aren't using go to sleep to keep memory low. You choose the delay in Settings, or turn sleep off. Pinned tabs stay awake.
+- Chrome extensions work through WebKit's `WKWebExtension`.
+- A built-in ad and tracker blocker (EasyList and EasyPrivacy). You can turn it off in Settings, or for one site.
+- Reader Mode, powered by [Defuddle](https://github.com/kepano/defuddle) by [kepano](https://github.com/kepano).
 
 Requires macOS 26 or later.
 
 ## Privacy
 
-Bosk has no backend and no account is needed. It collects nothing about you. Your history, tabs and
-settings stay on your Mac. The ad blocker downloads its filter lists from easylist.to once a week,
-with no cookies and nothing about you in the request.
+Bosk has no backend and needs no account. It collects nothing about you: your history, tabs and
+settings stay on your Mac. Once a week, the ad blocker downloads its filter lists from easylist.to.
+That request sends no cookies and nothing about you.
 
 ## Build
 
@@ -55,10 +55,9 @@ swift test --package-path Packages/BoskCore
 
 ## Contributing
 
-Bosk stays small on purpose: every feature must earn its place, and speed and low memory come
-first. If you share that vision and want to make Bosk better, pull requests are welcome. Good
-fits are fixes, speed and memory gains, and polish. Before you build a large new feature,
-open an issue first, so we can agree it fits a browser with no bloat.
+Bosk is small on purpose. Every feature has to earn its place, and speed and low memory come
+first. Pull requests are welcome, most of all fixes, speed and memory gains, and polish. If you
+want to build a large new feature, open an issue first so we can talk about whether it fits.
 
 ## License
 
