@@ -210,8 +210,13 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate {
     @objc func openLocation(_ sender: Any?) {
         showCommandBar(target: store.selectedTab == nil ? .newTab : .currentTab)
     }
+    /// A window with only pinned tabs closes: closing a pinned tab only resets it.
     @objc func closeTab(_ sender: Any?) {
-        if let tab = store.selectedTab { store.close(tab) } else { window?.performClose(sender) }
+        if let tab = store.selectedTab, !(tab.isPinned && store.tabs.isEmpty) {
+            store.close(tab)
+        } else {
+            window?.performClose(sender)
+        }
     }
     @objc func reopenClosedTab(_ sender: Any?) { store.reopenClosedTab() }
     @objc func browserBack(_ sender: Any?) { store.selectedTab?.webView?.goBack() }
@@ -445,7 +450,7 @@ private final class RootView: NSView {
 
     /// Folded, the strip starts under the top bar: the top bar goes under the window buttons.
     private var sidebarFrame: NSRect {
-        let top = isSidebarFolded ? Defaults.topBarHeight : 0
+        let top = isSidebarFolded ? Defaults.titleBarHeight : 0
         return NSRect(x: 0, y: top, width: sidebarWidth, height: max(0, bounds.height - top))
     }
 
@@ -501,6 +506,8 @@ private final class RootView: NSView {
 
     override func layout() {
         super.layout()
+        // The window lays out its title bar before this view.
+        (window as? BoskWindow)?.centerWindowButtons()
         guard !isAnimating else { return }
         sidebar.frame = sidebarFrame
         resizeHandle.frame = NSRect(x: sidebarWidth - 4, y: sidebarFrame.minY, width: 8, height: sidebarFrame.height)
@@ -518,7 +525,7 @@ private final class RootView: NSView {
                      width: max(0, bounds.width - sidebarWidth - inset),
                      height: max(0, bounds.height - inset * 2))
         card.layer?.cornerRadius = isSidebarFolded ? 0 : Defaults.contentCornerRadius
-        let barHeight = Defaults.topBarHeight
+        let barHeight = isSidebarFolded ? Defaults.titleBarHeight : Defaults.topBarHeight
         // The window buttons can go past the strip: Back starts after them.
         // In full screen they are hidden.
         let isFullScreen = window?.styleMask.contains(.fullScreen) ?? false

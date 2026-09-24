@@ -147,7 +147,7 @@ final class SidebarView: NSView, NSTableViewDataSource, NSTableViewDelegate {
         // The folded strip starts under the top bar, so its fold button is at the top.
         foldButton.frame = isCompact
             ? NSRect(x: bounds.midX - 14, y: 8, width: 28, height: 28)
-            : NSRect(x: bounds.maxX - 38, y: 8, width: 28, height: 28)
+            : NSRect(x: bounds.maxX - 38, y: (Defaults.sidebarHeaderHeight - 28) / 2, width: 28, height: 28)
         layoutUpdateButton()
         var y = isCompact ? foldButton.frame.maxY + 6 : Defaults.sidebarHeaderHeight
         let gridWidth = bounds.width - padding * 2

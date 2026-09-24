@@ -40,7 +40,12 @@ enum Defaults {
     /// Saved reader articles older than this are deleted at launch.
     static let readerArticleLifetime: TimeInterval = 30 * 24 * 60 * 60
 
-    static let topBarHeight: CGFloat = 44
+    /// The window buttons are centered in this height, as in a window with a standard toolbar.
+    /// The folded top bar has this height.
+    static let titleBarHeight: CGFloat = 52
+    /// The top bar in the card. The card starts `contentInset` below the window top, so this
+    /// height keeps the top bar buttons on the same line as the window buttons.
+    static let topBarHeight: CGFloat = titleBarHeight - 2 * contentInset
     /// The open sidebar's width until the user drags its edge (see Preferences.sidebarWidth).
     static let sidebarWidth: CGFloat = 250
     static let minimumSidebarWidth: CGFloat = 180
@@ -50,7 +55,7 @@ enum Defaults {
     static let sidebarFoldDragWidth: CGFloat = 130
     /// Folded sidebar. The window buttons are wider: the top bar makes room for the rest.
     static let stripWidth: CGFloat = 57
-    static let sidebarHeaderHeight: CGFloat = 44
+    static let sidebarHeaderHeight: CGFloat = titleBarHeight
     static let tabRowHeight: CGFloat = 34
     /// Space around the web content card.
     static let contentInset: CGFloat = 8
