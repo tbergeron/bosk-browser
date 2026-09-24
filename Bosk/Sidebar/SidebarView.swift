@@ -103,8 +103,6 @@ final class SidebarView: NSView, NSTableViewDataSource, NSTableViewDelegate {
         isCompact = compact
         SidebarTooltip.hide()
         pinnedGrid.isCompact = compact
-        // In the strip, a row is as tall as a pinned tile plus the space between tiles (see `layout`).
-        tableView.rowHeight = compact ? pinnedGrid.tileHeight + pinnedGrid.spacing : Defaults.tabRowHeight
         foldButton.image = NSImage(systemSymbolName: compact ? "sidebar.right" : "sidebar.left",
                                    accessibilityDescription: compact ? "Unfold Sidebar" : "Fold Sidebar")
         reloadTabs()
@@ -161,8 +159,8 @@ final class SidebarView: NSView, NSTableViewDataSource, NSTableViewDelegate {
         super.layout()
         let padding: CGFloat = isCompact ? 8 : 10
         // The folded strip starts under the top bar, so its fold button is at the top.
-        // In the strip, all items (fold button, pinned tiles, groups, tabs, "New Tab") are centered
-        // in slots of the tile height, with the tile spacing between them, so the space is always equal.
+        // In the strip, the fold button and the pinned tiles are in slots of the tile height, with the
+        // tile spacing between them. The rows below (groups, tabs, "New Tab") are smaller (TabRowView).
         let slot = pinnedGrid.tileHeight
         let gap = pinnedGrid.spacing
         // In the strip, the button's hover box is as wide as a tab's box (TabRowView), with the same
@@ -175,8 +173,8 @@ final class SidebarView: NSView, NSTableViewDataSource, NSTableViewDelegate {
         let gridHeight = pinnedGrid.height(forWidth: gridWidth)
         pinnedGrid.frame = NSRect(x: padding, y: y, width: gridWidth, height: gridHeight)
         if gridHeight > 0 { y += gridHeight + (isCompact ? gap : 12) }
-        // A strip row has half the space above its item, and half below it.
-        if isCompact { y -= gap / 2 }
+        // A strip row has 2 pt above its box (TabRowView), so the first box is `gap` below the tiles.
+        if isCompact { y -= 2 }
         scrollView.frame = NSRect(x: 0, y: y, width: bounds.width, height: max(0, bounds.height - y))
         tableView.tableColumns.first?.width = bounds.width
     }
