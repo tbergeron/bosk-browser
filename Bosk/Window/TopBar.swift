@@ -75,15 +75,18 @@ final class TopBar: NSView {
         updateProgress(loading: tab?.isLoading ?? false, progress: tab?.estimatedProgress ?? 0)
     }
 
-    /// "host / Page title": the host is strong, the title is dim.
+    /// "address / Page title": the address (no query or fragment) is strong, the title is dim.
     private static func addressText(for tab: Tab?) -> NSAttributedString {
         guard let tab, let url = tab.url else {
             return NSAttributedString(string: "Search or enter address",
                                       attributes: [.foregroundColor: NSColor.tertiaryLabelColor])
         }
-        let host = url.host() ?? url.absoluteString
-        let text = NSMutableAttributedString(string: host, attributes: [.foregroundColor: NSColor.labelColor])
-        if !tab.title.isEmpty, tab.title != host {
+        var components = URLComponents(url: url, resolvingAgainstBaseURL: false)
+        components?.query = nil
+        components?.fragment = nil
+        let address = components?.string ?? url.absoluteString
+        let text = NSMutableAttributedString(string: address, attributes: [.foregroundColor: NSColor.labelColor])
+        if !tab.title.isEmpty, tab.title != address {
             text.append(NSAttributedString(string: "  /  " + tab.title,
                                            attributes: [.foregroundColor: NSColor.secondaryLabelColor]))
         }

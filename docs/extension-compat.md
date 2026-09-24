@@ -14,7 +14,7 @@ through "Add to Bosk" (the Debug option `-BoskInstallWebStoreIDs` does the same 
 | Dark Reader | 4.9.132 | Yes | **Yes** | Pages turn dark (tested on Wikipedia). |
 | Return YouTube Dislike | 4.0.5 | Yes | Loads without errors | Not tested on YouTube. |
 | Vimium | 2.4.2 | Yes | **Partly** | Background script fails: WebKit has no `chrome.webNavigation.onHistoryStateUpdated`. Commands that need the background do not work. Key handling in the page: not tested (needs a person). |
-| Bitwarden | 2026.8.0 | Yes | **No** | Background fails: `this.device.toString` (Bitwarden does not recognize the browser). Popup and autofill not tested: autofill needs an account. |
+| Bitwarden | 2026.8.0 | Yes | **Partly** | Popup opens to the log in screen (2026-09-24). Before, the background failed on `this.device.toString`: WebKit's user agent in extension pages named no browser. Bosk now says Chrome there. Log in and autofill not tested: they need an account. Desktop app features need native messaging. |
 | 1Password | 8.12.37.1 | Yes | **No** | Background fails: WebKit has no `chrome.notifications`. As expected: 1Password also needs native messaging to its app. |
 | Bosk Test Extension (scripts/test-extension) | 1.0 | Yes | **Yes** | Content script on all pages (also in a tab woken from sleep), background worker, badge, popup with `chrome.tabs.query`. |
 
@@ -48,8 +48,8 @@ extensions.** A per-extension memory display in Settings would help users choose
 - `webNavigation.onHistoryStateUpdated` is missing (Vimium fails on it).
 - Native messaging goes through the app's delegate; Bosk does not implement it, so password
   managers that talk to a desktop app (1Password) cannot work.
-- Extensions that check for "Chrome" or "Safari" by user agent or by API shape may fail
-  (Bitwarden).
+- Extension pages (background, popup, options) get a Chrome user agent, because WebKit's own
+  names no browser. Extensions that check for Chrome by API shape may still fail.
 
 ## Things Bosk does to keep extensions fast
 

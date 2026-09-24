@@ -9,7 +9,16 @@ import WebKit
 final class ExtensionManager: NSObject {
     static let shared = ExtensionManager()
 
-    let controller = WKWebExtensionController(configuration: .default())
+    let controller: WKWebExtensionController = {
+        // Extensions from the Chrome Web Store find the browser by user agent. WebKit's
+        // plain user agent names no browser, so Bitwarden stops at launch. Say Chrome
+        // in extension pages only; tabs keep the Safari user agent.
+        let configuration = WKWebExtensionController.Configuration.default()
+        let webViewConfiguration = configuration.webViewConfiguration ?? WKWebViewConfiguration()
+        webViewConfiguration.applicationNameForUserAgent = "Chrome/\(WebStoreBridge.chromeVersion) Safari/537.36"
+        configuration.webViewConfiguration = webViewConfiguration
+        return WKWebExtensionController(configuration: configuration)
+    }()
 
     /// One installed extension, as saved in extensions.json.
     struct Record: Codable {
