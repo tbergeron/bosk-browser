@@ -6,6 +6,7 @@ import WebKit
 @MainActor
 final class WebContainerView: NSView {
     private(set) var webView: WKWebView?
+    private var pageView: NSView?
     private let snapshotView = NSImageView()
     /// The link under the mouse, at the bottom left, like Safari's status bar.
     private let statusBox = NSBox()
@@ -35,12 +36,31 @@ final class WebContainerView: NSView {
 
     func show(_ webView: WKWebView?) {
         guard webView !== self.webView else { return }
-        self.webView?.removeFromSuperview()
+        // Not the web view's superview: a tab that sleeps removes its web view first.
+        pageView?.removeFromSuperview()
         self.webView = webView
-        guard let webView else { return }
-        webView.frame = bounds
+        pageView = webView.map(Self.pageView)
+        guard let pageView else { return }
+        pageView.frame = bounds
+        addSubview(pageView, positioned: .below, relativeTo: snapshotView.superview == nil ? nil : snapshotView)
+    }
+
+    private static var pageViewKey = 0
+
+    /// Each web view has its own superview. WebKit puts a docked Web Inspector in the web view's
+    /// superview, so the inspector goes away and comes back with its tab. The web view keeps this
+    /// view; Tab removes the web view from it when the tab closes or sleeps, and then both can go.
+    private static func pageView(for webView: WKWebView) -> NSView {
+        if let pageView = objc_getAssociatedObject(webView, &pageViewKey) as? NSView, webView.superview === pageView {
+            return pageView
+        }
+        let pageView = NSView()
+        pageView.autoresizingMask = [.width, .height]
+        webView.frame = pageView.bounds
         webView.autoresizingMask = [.width, .height]
-        addSubview(webView, positioned: .below, relativeTo: snapshotView.superview == nil ? nil : snapshotView)
+        pageView.addSubview(webView)
+        objc_setAssociatedObject(webView, &pageViewKey, pageView, .OBJC_ASSOCIATION_RETAIN_NONATOMIC)
+        return pageView
     }
 
     /// Covers the web view with a picture of the page until the page draws.
