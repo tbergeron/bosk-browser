@@ -9,8 +9,10 @@ enum SidebarTooltip {
     /// The view the tooltip is for; `hide(for:)` from another view does nothing.
     private static weak var owner: NSView?
 
+    /// Only in the key window. The panel is a child window, and a child brings its parent to the front:
+    /// a hover on a window behind Settings or the command bar put that window over them.
     static func show(_ text: String, for view: NSView) {
-        guard let window = view.window, !text.isEmpty else { return hide() }
+        guard let window = view.window, window.isKeyWindow, !text.isEmpty else { return hide() }
         let panel = panel ?? makePanel()
         label.stringValue = text
         let padding = NSSize(width: 8, height: 4)
