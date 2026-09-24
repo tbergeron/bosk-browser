@@ -11,6 +11,7 @@ enum WebViewFactory {
         controller.addUserScript(WKUserScript(source: unsentInputScript, injectionTime: .atDocumentEnd,
                                               forMainFrameOnly: false, in: scriptWorld))
         controller.add(ScriptMessageRouter(), contentWorld: scriptWorld, name: unsentInputMessage)
+        WebStoreBridge.install(in: controller)
         return controller
     }()
 

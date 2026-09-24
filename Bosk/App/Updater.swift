@@ -4,7 +4,7 @@ import Sparkle
 /// Sparkle updates. Off until the build has a feed URL and a public key (docs/release.md),
 /// so development builds never check for updates.
 ///
-/// Sparkle checks once a day. When it finds an update, the sidebar shows an "Update available"
+/// Sparkle checks once a day. When it finds an update, the top bar shows an "Update available"
 /// button instead of Sparkle's window. The user can dismiss the button; it comes back after 24 hours.
 @MainActor
 enum Updater {
@@ -67,7 +67,7 @@ enum Updater {
     }
 }
 
-/// Sparkle's "gentle reminders": Bosk shows scheduled updates itself, in the sidebar.
+/// Sparkle's "gentle reminders": Bosk shows scheduled updates itself, in the top bar.
 /// https://sparkle-project.org/documentation/gentle-reminders
 @MainActor
 private final class UpdateReminder: NSObject, @preconcurrency SPUStandardUserDriverDelegate {
@@ -90,4 +90,56 @@ private final class UpdateReminder: NSObject, @preconcurrency SPUStandardUserDri
     func standardUserDriverWillFinishUpdateSession() {
         Updater.hasPendingUpdate = false
     }
+}
+
+/// "Update available" and its dismiss button, in the top bar when Sparkle found an update.
+@MainActor
+final class UpdateButton: NSView {
+    private let button = NSButton(title: "Update available", target: nil, action: nil)
+    private let dismissButton = NSButton()
+    private let dismissWidth: CGFloat = 16
+
+    init() {
+        super.init(frame: .zero)
+        button.bezelStyle = .push
+        button.controlSize = .small
+        button.target = self
+        button.action = #selector(updateClicked)
+        button.toolTip = "Show the update"
+        addSubview(button)
+        dismissButton.image = NSImage(systemSymbolName: "xmark", accessibilityDescription: "Dismiss Update")
+        dismissButton.symbolConfiguration = .init(pointSize: 10, weight: .semibold)
+        dismissButton.isBordered = false
+        dismissButton.contentTintColor = .secondaryLabelColor
+        dismissButton.target = self
+        dismissButton.action = #selector(dismissClicked)
+        dismissButton.toolTip = "Remind me in 24 hours"
+        addSubview(dismissButton)
+        isHidden = !Updater.showsUpdateButton
+        NotificationCenter.default.addObserver(forName: Updater.updateButtonDidChange, object: nil, queue: .main) { [weak self] _ in
+            MainActor.assumeIsolated {
+                self?.isHidden = !Updater.showsUpdateButton
+                self?.superview?.needsLayout = true
+            }
+        }
+    }
+
+    @available(*, unavailable)
+    required init?(coder: NSCoder) { fatalError("init(coder:) is not used") }
+
+    override var fittingSize: NSSize {
+        guard !isHidden else { return .zero }
+        let size = button.fittingSize
+        return NSSize(width: size.width + dismissWidth, height: size.height)
+    }
+
+    override func layout() {
+        super.layout()
+        let size = button.fittingSize
+        button.frame = NSRect(x: 0, y: bounds.midY - size.height / 2, width: size.width, height: size.height)
+        dismissButton.frame = NSRect(x: button.frame.maxX, y: bounds.midY - 8, width: dismissWidth, height: 16)
+    }
+
+    @objc private func updateClicked() { Updater.checkForUpdates() }
+    @objc private func dismissClicked() { Updater.dismissUpdateButton() }
 }

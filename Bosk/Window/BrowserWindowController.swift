@@ -45,7 +45,7 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate {
         store.window = window
         findBar.onClose = { [weak self] in self?.hideFindBar() }
         extensionActions.currentTab = { [weak self] in self?.store.selectedTab }
-        topBar.setAccessoryViews([addToBoskButton, adBlockerButton, TopBarDivider(), extensionActions, DownloadsButton()])
+        topBar.setAccessoryViews([UpdateButton(), addToBoskButton, adBlockerButton, TopBarDivider(), extensionActions, DownloadsButton()])
         ExtensionManager.shared.addObserver(self) { [weak self] in self?.extensionActions.reload() }
         NotificationCenter.default.addObserver(forName: PageZoom.didChangeDefault, object: nil, queue: .main) { [weak self] _ in
             MainActor.assumeIsolated {

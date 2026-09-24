@@ -55,7 +55,8 @@ final class TabRowView: NSTableRowView {
         titleField.stringValue = title
         titleField.textColor = isNewTabRow ? .secondaryLabelColor : .labelColor
         titleField.isHidden = isCompact
-        toolTip = isCompact ? title : nil
+        // Also in the open sidebar, where a long title is cut off.
+        toolTip = title
         symbolName = icon == nil ? (isNewTabRow ? "plus" : "globe") : nil
         iconLayer.contents = icon ?? symbolImage()
         iconLayer.opacity = icon == nil && !isNewTabRow ? 0.5 : 1
@@ -123,7 +124,8 @@ final class TabRowView: NSTableRowView {
 
     override func updateTrackingAreas() {
         super.updateTrackingAreas()
-        trackingAreas.forEach(removeTrackingArea)
+        // Only this view's own area: the tooltip has a tracking area too.
+        trackingAreas.filter { $0.owner === self }.forEach(removeTrackingArea)
         addTrackingArea(NSTrackingArea(rect: bounds, options: [.mouseEnteredAndExited, .activeInActiveApp, .inVisibleRect],
                                        owner: self))
     }

@@ -35,14 +35,22 @@ final class CommandBarPanel: NSPanel, NSTextFieldDelegate, NSTableViewDataSource
     private let fieldHeight: CGFloat = 56
     private let rowHeight: CGFloat = 40
     private let headerHeight: CGFloat = 28
+    /// The space between the list and the edges of the glass: left and right.
+    private let listInset: CGFloat = 6
+    /// The bottom is 2 points more: the light bottom edge of the glass makes an equal space look smaller.
+    private let listBottomInset: CGFloat = 8
+    private let cornerRadius: CGFloat = 16
 
     init() {
         super.init(contentRect: NSRect(x: 0, y: 0, width: Defaults.commandBarWidth, height: 56),
                    styleMask: [.borderless, .nonactivatingPanel],
                    backing: .buffered, defer: true)
         isFloatingPanel = true
+        // Only the round glass shows. An opaque window fills the corners outside its curve.
+        isOpaque = false
         backgroundColor = .clear
-        hasShadow = true
+        // The window shadow of a borderless panel draws a thin dark line around the glass.
+        hasShadow = false
         isReleasedWhenClosed = false
 
         field.isBordered = false
@@ -81,9 +89,18 @@ final class CommandBarPanel: NSPanel, NSTextFieldDelegate, NSTableViewDataSource
         let content = NSView()
         content.addSubview(field)
         content.addSubview(scrollView)
-        glass.cornerRadius = 16
+        glass.cornerRadius = cornerRadius
         glass.contentView = content
-        contentView = glass
+        glass.autoresizingMask = [.width, .height]
+        // The glass is round, but its backdrop is not: this clip keeps the corners clear.
+        let clip = NSView()
+        clip.wantsLayer = true
+        clip.layer?.cornerRadius = cornerRadius
+        clip.layer?.cornerCurve = .continuous
+        clip.layer?.masksToBounds = true
+        clip.addSubview(glass)
+        contentView = clip
+        glass.frame = clip.bounds
     }
 
     override var canBecomeKey: Bool { true }
@@ -175,7 +192,7 @@ final class CommandBarPanel: NSPanel, NSTextFieldDelegate, NSTableViewDataSource
 
     /// The top edge stays in place; the panel grows down.
     private func resizeForRows() {
-        let height = fieldHeight + listHeight + (rows.isEmpty ? 0 : 8)
+        let height = fieldHeight + listHeight + (rows.isEmpty ? 0 : listInset + listBottomInset)
         var frame = self.frame
         frame.origin.y = frame.maxY - height
         frame.size.height = height
@@ -186,14 +203,22 @@ final class CommandBarPanel: NSPanel, NSTextFieldDelegate, NSTableViewDataSource
     private func layoutContent() {
         let size = frame.size
         field.frame = NSRect(x: 18, y: size.height - fieldHeight + 15, width: size.width - 36, height: 26)
-        scrollView.frame = NSRect(x: 6, y: 4, width: size.width - 12, height: listHeight)
-        tableView.tableColumns.first?.width = size.width - 12
+        scrollView.frame = NSRect(x: listInset, y: listBottomInset, width: size.width - listInset * 2, height: listHeight)
+        tableView.tableColumns.first?.width = size.width - listInset * 2
     }
 
     func numberOfRows(in tableView: NSTableView) -> Int { rows.count }
 
     func tableView(_ tableView: NSTableView, heightOfRow row: Int) -> CGFloat {
         height(of: rows[row])
+    }
+
+    func tableView(_ tableView: NSTableView, rowViewForRow row: Int) -> NSTableRowView? {
+        let rowView = tableView.makeView(withIdentifier: RoundRowView.identifier, owner: nil) as? RoundRowView
+            ?? RoundRowView()
+        // The row curve follows the glass curve at the list inset.
+        rowView.cornerRadius = cornerRadius - listInset
+        return rowView
     }
 
     func tableView(_ tableView: NSTableView, shouldSelectRow row: Int) -> Bool {
@@ -299,6 +324,27 @@ final class CommandBarPanel: NSPanel, NSTextFieldDelegate, NSTableViewDataSource
         let onChoose = onChoose
         dismiss()
         if let choice { onChoose?(choice, target) }
+    }
+}
+
+/// A row whose selection has round corners, to match the round glass.
+@MainActor
+private final class RoundRowView: NSTableRowView {
+    static let identifier = NSUserInterfaceItemIdentifier("RoundRow")
+    var cornerRadius: CGFloat = 0
+
+    init() {
+        super.init(frame: .zero)
+        identifier = Self.identifier
+    }
+
+    @available(*, unavailable)
+    required init?(coder: NSCoder) { fatalError("init(coder:) is not used") }
+
+    override func drawSelection(in dirtyRect: NSRect) {
+        // The same colors as the plain selection.
+        (isEmphasized ? NSColor.selectedContentBackgroundColor : .unemphasizedSelectedContentBackgroundColor).setFill()
+        NSBezierPath(roundedRect: bounds, xRadius: cornerRadius, yRadius: cornerRadius).fill()
     }
 }
 

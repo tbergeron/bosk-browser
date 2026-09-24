@@ -21,6 +21,7 @@ extension Tab: WKNavigationDelegate {
         if navigationAction.request.url?.scheme == ReaderPage.scheme { preferences.allowsContentJavaScript = false }
         if navigationAction.targetFrame?.isMainFrame != false {
             AdBlocker.shared.configure(preferences, for: navigationAction.request.url)
+            webView.customUserAgent = WebStoreBridge.userAgent(for: navigationAction.request.url)
         }
         return (.allow, preferences)
     }
