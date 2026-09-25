@@ -1641,6 +1641,7 @@ extension ExtensionShim {
       // that sends it, and a number already heard is let go by. A content
       // script's port, or an app's, goes as it is.
       if (runtime && typeof runtime.connect === "function" && runtime.onConnect) {
+        const keepAlive = "bosk-keepalive";
         const own = runtime.getURL("");
         const numbered = new WeakSet();
         // Set on the port itself, not with `put`, which holds what it touches
@@ -1690,11 +1691,32 @@ extension ExtensionShim {
         put(onConnect, "addListener", (listener, ...rest) => {
           if (typeof listener !== "function") return add.call(onConnect, listener, ...rest);
           let w = wrapped.get(listener);
-          if (!w) { w = (port) => listener(fromOwn(port) ? number(port) : port); wrapped.set(listener, w); }
+          if (!w) { w = (port) => port && port.name === keepAlive ? undefined : listener(fromOwn(port) ? number(port) : port); wrapped.set(listener, w); }
           return add.call(onConnect, w, ...rest);
         });
         put(onConnect, "removeListener", (listener) => remove.call(onConnect, wrapped.get(listener) || listener));
         put(onConnect, "hasListener", (listener) => has.call(onConnect, wrapped.get(listener) || listener));
+
+        // (Bosk's own, not from Search.) WebKit unloads a worker 30 s after its last event, and
+        // keeps it only while it has an open port and posted on a port in the last 2 minutes
+        // (WebExtensionContext::unloadBackgroundContentIfPossible). An open popup does not count:
+        // Bitwarden's worker went away while its popup waited for a login code, and the login
+        // failed. So each open page of the extension (popup, pop-out, options) holds a port to
+        // the worker, and the worker posts on it every 20 s. The extension's own listeners never
+        // see this port.
+        if (worker) {
+          add.call(onConnect, (port) => {
+            if (!port || port.name !== keepAlive) return;
+            const timer = setInterval(() => { try { port.postMessage({ beat: true }); } catch (e) { clearInterval(timer); } }, 20000);
+            port.onDisconnect.addListener(() => clearInterval(timer));
+          });
+        } else if (!inContent && !embedded && !background && typeof document !== "undefined") {
+          // Connected again if the worker goes anyway (a crash): the port wakes it.
+          const hold = () => {
+            try { connect.call(runtime, { name: keepAlive }).onDisconnect.addListener(() => setTimeout(hold, 1000)); } catch (e) {}
+          };
+          hold();
+        }
       }
 
       // Members of namespaces WebKit has.

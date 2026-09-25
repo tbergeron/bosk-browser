@@ -129,8 +129,14 @@ final class ExtensionManager: NSObject {
     private func prepare(_ fileName: String, fresh: Bool) async throws {
         let folder = directory.appending(path: fileName)
         let version = WebStoreBridge.chromeVersion
+        #if DEBUG
+        // Debug builds log what extensions write to console.error and console.warn.
+        let verbose = true
+        #else
+        let verbose = false
+        #endif
         try await Task.detached(priority: .userInitiated) {
-            try ExtensionShim.prepare(folder, chromeVersion: version, fresh: fresh)
+            try ExtensionShim.prepare(folder, chromeVersion: version, verbose: verbose, fresh: fresh)
         }.value
     }
 

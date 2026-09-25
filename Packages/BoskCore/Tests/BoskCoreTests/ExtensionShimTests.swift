@@ -83,6 +83,15 @@ struct ExtensionShimTests {
         #expect(try read("popup/index.html") == #"<html><head><script src="/bosk-shim.js"></script><title>x</title></head></html>"#)
     }
 
+    @Test("A Debug build's shim reports console errors, and a release build's shim does not")
+    func verboseOnlyWhenAsked() throws {
+        try worker()
+        try ExtensionShim.prepare(folder, chromeVersion: "141.0.0.0")
+        #expect(try read("bosk-shim.js").contains("if (false && root.console)"))
+        try ExtensionShim.prepare(folder, chromeVersion: "141.0.0.0", verbose: true)
+        #expect(try read("bosk-shim.js").contains("if (true && root.console)"))
+    }
+
     @Test("nativeMessaging is added so the shim can reach Bosk, and recorded so the install prompt does not show it")
     func nativeMessagingAdded() throws {
         try worker()

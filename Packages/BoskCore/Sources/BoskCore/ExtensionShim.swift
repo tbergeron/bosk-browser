@@ -40,22 +40,23 @@ public enum ExtensionShim {
     /// Adds the shim to the extension in `folder`.
     /// - Parameters:
     ///   - chromeVersion: The version extensions see in the Chrome user agent the shim gives them.
+    ///   - verbose: The shim also sends the extension's console errors and warnings to Bosk's log.
     ///   - fresh: A package just unpacked or copied in. Files by Bosk's names that came inside
     ///     it are removed before they are read: only Bosk says what Bosk added.
-    public static func prepare(_ folder: URL, chromeVersion: String, fresh: Bool = false) throws {
+    public static func prepare(_ folder: URL, chromeVersion: String, verbose: Bool = false, fresh: Bool = false) throws {
         let files = FileManager.default
         if fresh {
             for name in [stamp, addedFile] { try? files.removeItem(at: folder.appending(path: name)) }
         }
         let stampURL = folder.appending(path: stamp)
-        let wanted = version + "-" + chromeVersion
+        let wanted = version + "-" + chromeVersion + (verbose ? "-verbose" : "")
         if (try? String(contentsOf: stampURL, encoding: .utf8)) == wanted { return }
         let manifestURL = folder.appending(path: "manifest.json")
         guard let data = try? Data(contentsOf: manifestURL),
               var manifest = try JSONSerialization.jsonObject(with: data) as? [String: Any]
         else { throw Error.noManifest }
 
-        try shim(for: folder, chromeVersion: chromeVersion)
+        try shim(for: folder, chromeVersion: chromeVersion, verbose: verbose)
             .write(to: folder.appending(path: file), atomically: true, encoding: .utf8)
 
         // Native messaging is how the shim reaches Bosk; user scripts are carried out through
@@ -153,7 +154,7 @@ public enum ExtensionShim {
 
     /// The shim as this extension gets it: with the events its code mentions, so its worker can
     /// take their listeners late, and with the scripts it ships, so a missing import fails at once.
-    static func shim(for folder: URL, chromeVersion: String) -> String {
+    static func shim(for folder: URL, chromeVersion: String, verbose: Bool) -> String {
         var found = Set<String>()
         var scripts: [String] = []
         let pattern = try! NSRegularExpression(pattern: #"\.([a-zA-Z]+)\.(on[A-Z][A-Za-z]+)\b"#)
@@ -180,6 +181,6 @@ public enum ExtensionShim {
         return script.replacingOccurrences(of: "__BOSK_EVENTS__", with: json(Array(found)))
             .replacingOccurrences(of: "__BOSK_SCRIPTS__", with: json(scripts))
             .replacingOccurrences(of: "__BOSK_CHROME__", with: chromeVersion)
-            .replacingOccurrences(of: "__BOSK_VERBOSE__", with: "false")
+            .replacingOccurrences(of: "__BOSK_VERBOSE__", with: verbose ? "true" : "false")
     }
 }
