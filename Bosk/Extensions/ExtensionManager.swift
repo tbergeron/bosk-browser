@@ -48,6 +48,77 @@ final class ExtensionManager: NSObject {
         super.init()
         controller.delegate = self
         try? FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        keepAlive.tolerance = 3
+    }
+
+    // MARK: Keeping workers loaded
+
+    /// WebKit unloads a non-persistent worker or background page 30 s after the last event it
+    /// sent to it (WebExtensionContext::scheduleBackgroundContentToUnload). An open popup does
+    /// not count: Bitwarden's worker went away while its popup waited for a login code, and the
+    /// login failed. A worker loaded again is not safe either: WebKit can put it in another
+    /// process than the popup, and then they cannot reach each other. `loadBackgroundContent`
+    /// starts WebKit's 30 s again, so it is called for each loaded extension well inside that
+    /// time, and the workers stay loaded, as persistent background pages do.
+    private lazy var keepAlive = Timer.scheduledTimer(withTimeInterval: 15, repeats: true) { _ in
+        MainActor.assumeIsolated { ExtensionManager.shared.keepWorkersLoaded() }
+    }
+
+    private func keepWorkersLoaded() {
+        for context in contexts.values where context.webExtension.hasBackgroundContent {
+            context.loadBackgroundContent { _ in }
+        }
+        for (id, port) in workerPorts where contexts[id] != nil {
+            if workerPings[id] != nil {
+                revive(id, because: "its worker stopped answering the app")
+                continue
+            }
+            workerPings[id] = Date()
+            port.sendMessage(["ping": Date().timeIntervalSince1970], completionHandler: nil)
+        }
+    }
+
+    // MARK: Watching workers (the "bosk.alive" port a worker's shim holds)
+
+    private var workerPorts: [String: WKWebExtension.MessagePort] = [:]
+    /// When a ping went out that has no answer yet.
+    private var workerPings: [String: Date] = [:]
+
+    /// WebKit can end a worker and still count it as loaded; then each message to it goes
+    /// nowhere, for good, and a popup only shows its spinner (seen with Bitwarden a few seconds
+    /// after its start, cause not known). Bosk pings the worker on this port from
+    /// `keepWorkersLoaded`. No answer by the next ping, or the port gone while the extension
+    /// stays loaded, and the extension is loaded again.
+    func watchWorker(_ port: WKWebExtension.MessagePort, of context: WKWebExtensionContext) {
+        let id = context.uniqueIdentifier
+        workerPorts[id] = port
+        workerPings[id] = nil
+        port.messageHandler = { [weak self] _, _ in
+            MainActor.assumeIsolated {
+                guard let self, self.workerPorts[id] === port else { return }
+                self.workerPings[id] = nil
+            }
+        }
+        port.disconnectHandler = { [weak self] _ in
+            MainActor.assumeIsolated {
+                guard let self, self.workerPorts[id] === port else { return }
+                self.workerPorts[id] = nil
+                self.workerPings[id] = nil
+                // Still this context: the worker went, not the extension.
+                guard self.contexts[id] === context else { return }
+                self.revive(id, because: "its worker went away")
+            }
+        }
+    }
+
+    /// One of the extension's pages is on screen: its popup, or a tab at one of its addresses.
+    func hasVisiblePage(_ id: String) -> Bool {
+        guard let context = contexts[id] else { return false }
+        return windowsProvider?().contains { window in
+            if window.showsPopup(of: context) { return true }
+            guard let url = window.store.selectedTab?.url else { return false }
+            return url.scheme == context.baseURL.scheme && url.host() == context.baseURL.host()
+        } ?? false
     }
 
     // MARK: Loading
@@ -326,6 +397,9 @@ final class ExtensionManager: NSObject {
 
     private func unload(_ id: String) {
         guard let context = contexts.removeValue(forKey: id) else { return }
+        workerPorts[id] = nil
+        workerPings[id] = nil
+        ExtensionShimAnswers.forget(id)
         if let observer = errorObservers.removeValue(forKey: id) { NotificationCenter.default.removeObserver(observer) }
         try? controller.unload(context)
         // Its ports show as gone only after WebKit has had a turn.

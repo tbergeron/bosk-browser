@@ -44,6 +44,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
             PerfHarness.runIfRequested(controller)
             PerfHarness.installExtensionIfRequested(controller)
             PerfHarness.installWebStoreExtensionsIfRequested(controller)
+            PerfHarness.openPopupIfRequested(controller)
         }
         ProcessReport.start { [weak self] in self?.windowControllers.map(\.store) ?? [] }
         #endif

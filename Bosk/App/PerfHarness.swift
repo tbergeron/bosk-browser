@@ -34,6 +34,24 @@ enum PerfHarness {
         }
     }
 
+    /// `-BoskOpenPopup <id>` (or `installed`, for the extension `-BoskInstallExtension` added):
+    /// shows the extension's popup after `-BoskOpenPopupAfter` seconds (5 when not given), so a
+    /// worker's state after a pause can be checked without clicks.
+    static func openPopupIfRequested(_ controller: BrowserWindowController) {
+        guard let id = UserDefaults.standard.string(forKey: "BoskOpenPopup") else { return }
+        let after = UserDefaults.standard.integer(forKey: "BoskOpenPopupAfter")
+        Task { @MainActor in
+            try? await Task.sleep(for: .seconds(after > 0 ? after : 5))
+            // "installed": the extension `-BoskInstallExtension` just added (its ID is new).
+            let record = id == "installed" ? ExtensionManager.shared.records.last : nil
+            guard let context = ExtensionManager.shared.contexts[record?.id ?? id] else {
+                return NSLog("Bosk: test popup: extension %@ is not loaded", id)
+            }
+            NSLog("Bosk: test popup of %@", id)
+            context.performAction(for: controller.store.selectedTab)
+        }
+    }
+
     static func runIfRequested(_ controller: BrowserWindowController) {
         guard UserDefaults.standard.bool(forKey: "BoskPerfTest") else { return }
         Task { @MainActor in

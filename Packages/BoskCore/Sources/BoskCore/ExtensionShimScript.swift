@@ -757,13 +757,16 @@ extension ExtensionShim {
             // Any real answer from the worker meanwhile says it runs, too:
             // the question alone can go unheard from a page that listens.
             if (r === "pong" || heard >= started) heard = Math.max(heard, Date.now());
-            else {
+            // (Bosk: said only by a page still on screen. A popup that is closing
+            // gets no answer either, and its word would end a worker that runs.)
+            else if (document.visibilityState === "visible") {
               if (__BOSK_VERBOSE__) native("debug.error", ["worker check: " + String(r) + " from " + location.pathname]).catch(() => {});
               native("background.revive", []).catch(() => {});
             }
           }).finally(() => { asking = false; });
         };
-        checkWorker = page ? check : () => {};
+        // (Bosk: not in a background page, which cannot ask itself.)
+        checkWorker = page && !background ? check : () => {};
         put(runtime, "sendMessage", (...args) => {
           const callback = typeof args[args.length - 1] === "function" ? args.pop() : null;
           // Never heard back by the one that sends it, so said for it.
@@ -1059,29 +1062,13 @@ extension ExtensionShim {
           };
           put(extension, "getViews", views);
           // WebKit's getViews is read-only, and so is chrome.extension: both
-          // ignore any redefinition without a word. The popup page's code
-          // is then handed a `chrome` of its own, built on WebKit's, whose
-          // extension namespace answers getViews and passes everything else
-          // on (Malwarebytes lays itself out as a tab otherwise).
-          if (popup && extension.getViews !== views) {
-            const bound = new Map();
-            const ownExtension = Object.create(extension);
-            for (const key of Object.getOwnPropertyNames(extension)) {
-              if (key === "getViews") continue;
-              Object.defineProperty(ownExtension, key, { configurable: true, enumerable: true, get: () => {
-                const v = extension[key];
-                if (typeof v !== "function") return v;
-                if (!bound.has(key)) bound.set(key, v.bind(extension));
-                return bound.get(key);
-              } });
-            }
-            Object.defineProperty(ownExtension, "getViews", { value: views, configurable: true, writable: true, enumerable: true });
-            const ownChrome = Object.create(chrome);
-            Object.defineProperty(ownChrome, "extension", { value: ownExtension, configurable: true, writable: true, enumerable: true });
-            for (const key of ["chrome", "browser"]) {
-              try { if (root[key] === chrome) root[key] = ownChrome; } catch (e) {}
-            }
-          }
+          // ignore any redefinition without a word. (Search then hands the
+          // popup page a `chrome` of its own, built on WebKit's, so that
+          // Malwarebytes does not lay itself out as a tab. Bosk does not:
+          // WebKit finds a page's listeners through the global `chrome` and
+          // `browser`, and with that replacement no event, message or storage
+          // change reached the popup any more. Bitwarden's sync waited for
+          // ever, and Dark Reader's popup stayed at "Loading".)
         }
       }
       fill("extension", {
@@ -1165,11 +1152,99 @@ extension ExtensionShim {
       });
       // Items built with Object.create(null) — Chrome stores them, WebKit
       // throws that an object is expected.
+      const plainItems = (items) => items && typeof items === "object" && Object.getPrototypeOf(items) !== Object.prototype ? Object.assign({}, items) : items;
+      // (Bosk's own, not from Search.) In Chrome, a change to storage reaches
+      // the onChanged listeners of every context, the one that made it too.
+      // WebKit (macOS 27.2) leaves out the page that made it: a popup's own
+      // set never comes back to it. Bitwarden's state layer waits for that
+      // echo after each write, so its login timed out one second after the
+      // server said yes. A worker does get its own changes, so only pages
+      // are helped: the change is worked out here, from the old values, and
+      // given to the page's own listeners once the call is done. Should
+      // WebKit deliver it too one day, the same change seen within a moment
+      // is dropped.
+      const echoes = [];
+      const signature = (changes) => JSON.stringify(Object.keys(changes).sort().map((k) => [k, changes[k].newValue === undefined ? null : JSON.stringify(changes[k].newValue)]));
+      const echoed = (changes, area) => {
+        const now = Date.now();
+        while (echoes.length && now - echoes[0].at > 1500) echoes.shift();
+        const sig = signature(changes);
+        const i = echoes.findIndex((e) => e.area === area && e.sig === sig);
+        if (i < 0) return false;
+        echoes.splice(i, 1);
+        return true;
+      };
+      // WebKit's listeners, kept so the page's own changes can be given to
+      // them; each is registered with WebKit behind a wrapper that drops an
+      // echo of a change already given.
+      const tracked = (event, areaOf) => {
+        if (!event || typeof event.addListener !== "function") return { fire: () => {} };
+        const add = event.addListener.bind(event), remove = event.removeListener.bind(event), has = event.hasListener.bind(event);
+        const wrapped = new Map();
+        put(event, "addListener", (listener, ...rest) => {
+          if (typeof listener !== "function") return add(listener, ...rest);
+          let w = wrapped.get(listener);
+          if (!w) { w = (changes, areaName) => echoed(changes, areaOf(areaName)) ? undefined : listener(changes, areaName); wrapped.set(listener, w); }
+          return add(w, ...rest);
+        });
+        put(event, "removeListener", (listener) => { const w = wrapped.get(listener); wrapped.delete(listener); return remove(w || listener); });
+        put(event, "hasListener", (listener) => has(wrapped.get(listener) || listener));
+        return { fire: (changes, areaName) => { for (const listener of [...wrapped.keys()]) { try { listener(changes, areaName); } catch (e) { setTimeout(() => { throw e; }); } } } };
+      };
+      const global = !inContent && !worker && chrome.storage ? tracked(chrome.storage.onChanged, (areaName) => areaName) : null;
       for (const area of ["local", "sync", "session"]) {
         const store = chrome.storage && chrome.storage[area];
         if (!store || typeof store.set !== "function") continue;
         const set = store.set.bind(store);
-        put(store, "set", (items, ...rest) => set(items && typeof items === "object" && Object.getPrototypeOf(items) !== Object.prototype ? Object.assign({}, items) : items, ...rest));
+        if (!global) { put(store, "set", (items, ...rest) => set(plainItems(items), ...rest)); continue; }
+        const own = tracked(store.onChanged, () => area);
+        const get = typeof store.get === "function" ? store.get.bind(store) : () => Promise.resolve({});
+        const fire = (changes) => {
+          echoes.push({ area, sig: signature(changes), at: Date.now() });
+          own.fire(changes, area);
+          global.fire(changes, area);
+        };
+        // The change Chrome would report, or null when nothing changed.
+        const changesOf = (name, old, arg) => {
+          const changes = {};
+          if (name === "set") {
+            for (const key of Object.keys(arg || {})) {
+              const text = JSON.stringify(arg[key]);
+              if (text === undefined) continue;
+              if (key in old && JSON.stringify(old[key]) === text) continue;
+              changes[key] = key in old ? { oldValue: old[key], newValue: JSON.parse(text) } : { newValue: JSON.parse(text) };
+            }
+          } else {
+            const keys = name === "clear" ? Object.keys(old) : Array.isArray(arg) ? arg : [arg];
+            for (const key of keys) if (key in old) changes[key] = { oldValue: old[key] };
+          }
+          return Object.keys(changes).length ? changes : null;
+        };
+        for (const name of ["set", "remove", "clear"]) {
+          const original = store[name];
+          if (typeof original !== "function") continue;
+          const fn = original.bind(store);
+          put(store, name, (...args) => {
+            const callback = typeof args[args.length - 1] === "function" ? args.pop() : null;
+            if (name === "set") args[0] = plainItems(args[0]);
+            const keys = name === "set" ? Object.keys(args[0] || {}) : name === "clear" ? null : args[0];
+            const run = (old) => new Promise((resolve, reject) => {
+              const after = () => { const changes = changesOf(name, old || {}, args[0]); if (changes) fire(changes); };
+              if (callback) {
+                fn(...args, (result) => {
+                  let failed = false;
+                  try { failed = !!chrome.runtime.lastError; } catch (e) {}
+                  try { callback(result); } finally { if (!failed) after(); resolve(result); }
+                });
+              } else {
+                Promise.resolve(fn(...args)).then((result) => { after(); resolve(result); }, reject);
+              }
+            });
+            const done = Promise.resolve().then(() => get(keys)).catch(() => ({})).then(run);
+            if (callback) { done.catch(() => {}); return undefined; }
+            return done;
+          });
+        }
       }
       fill("scripting", {
         ExecutionWorld: { ISOLATED: "ISOLATED", MAIN: "MAIN", USER_SCRIPT: "USER_SCRIPT" },
@@ -1641,7 +1716,6 @@ extension ExtensionShim {
       // that sends it, and a number already heard is let go by. A content
       // script's port, or an app's, goes as it is.
       if (runtime && typeof runtime.connect === "function" && runtime.onConnect) {
-        const keepAlive = "bosk-keepalive";
         const own = runtime.getURL("");
         const numbered = new WeakSet();
         // Set on the port itself, not with `put`, which holds what it touches
@@ -1691,34 +1765,27 @@ extension ExtensionShim {
         put(onConnect, "addListener", (listener, ...rest) => {
           if (typeof listener !== "function") return add.call(onConnect, listener, ...rest);
           let w = wrapped.get(listener);
-          if (!w) { w = (port) => port && port.name === keepAlive ? undefined : listener(fromOwn(port) ? number(port) : port); wrapped.set(listener, w); }
+          if (!w) { w = (port) => listener(fromOwn(port) ? number(port) : port); wrapped.set(listener, w); }
           return add.call(onConnect, w, ...rest);
         });
         put(onConnect, "removeListener", (listener) => remove.call(onConnect, wrapped.get(listener) || listener));
         put(onConnect, "hasListener", (listener) => has.call(onConnect, wrapped.get(listener) || listener));
-
-        // (Bosk's own, not from Search.) WebKit unloads a worker 30 s after its last event, and
-        // keeps it only while it has an open port and posted on a port in the last 2 minutes
-        // (WebExtensionContext::unloadBackgroundContentIfPossible). An open popup does not count:
-        // Bitwarden's worker went away while its popup waited for a login code, and the login
-        // failed. So each open page of the extension (popup, pop-out, options) holds a port to
-        // the worker, and the worker posts on it every 20 s. The extension's own listeners never
-        // see this port.
-        if (worker) {
-          add.call(onConnect, (port) => {
-            if (!port || port.name !== keepAlive) return;
-            const timer = setInterval(() => { try { port.postMessage({ beat: true }); } catch (e) { clearInterval(timer); } }, 20000);
-            port.onDisconnect.addListener(() => clearInterval(timer));
-          });
-        } else if (!inContent && !embedded && !background && typeof document !== "undefined") {
-          // Connected again if the worker goes anyway (a crash): the port wakes it.
-          const hold = () => {
-            try { connect.call(runtime, { name: keepAlive }).onDisconnect.addListener(() => setTimeout(hold, 1000)); } catch (e) {}
-          };
-          hold();
-        }
       }
 
+      // (Bosk's own, not from Search.) WebKit can end a worker and still count it as loaded;
+      // then each message to it goes nowhere, for good, and only a load of the whole extension
+      // helps (ExtensionManager.revive). So the worker holds a port to Bosk and answers its
+      // pings on it. A ping without an answer, or the port gone, and Bosk loads the extension
+      // again. (The shim's connectNative leaves a port named "bosk.…" as it is.)
+      if (worker && runtime && typeof runtime.connectNative === "function") {
+        const hold = () => {
+          let port;
+          try { port = runtime.connectNative("bosk.alive"); } catch (e) { return; }
+          port.onMessage.addListener((m) => { if (m && m.ping !== undefined) { try { port.postMessage({ pong: m.ping }); } catch (e) {} } });
+          port.onDisconnect.addListener(() => setTimeout(hold, 5000));
+        };
+        hold();
+      }
       // Members of namespaces WebKit has.
       if (chrome.i18n && !chrome.i18n.detectLanguage) put(chrome.i18n, "detectLanguage", call("i18n.detectLanguage"));
       if (runtime && !runtime.getContexts) put(runtime, "getContexts", call("runtime.getContexts"));
@@ -2225,6 +2292,45 @@ extension ExtensionShim {
         const tell = (text) => { try { native("debug.error", [String(text).slice(0, 2000)]).catch(() => {}); } catch (e) {} };
         root.addEventListener("error", (e) => tell((e.message || "error") + " @ " + String(e.filename || "").split("/").slice(3).join("/") + ":" + e.lineno));
         root.addEventListener("unhandledrejection", (e) => tell("unhandled: " + (e.reason && ((e.reason.message || "") + " — " + (e.reason.stack || "")) || e.reason)));
+        // (Bosk's own.) In a Debug build, the status of each request an extension page or worker
+        // makes, and the server's answer when it fails: a login error that the extension hides
+        // shows here. Never what is sent, and never a successful answer (it can hold tokens).
+        if (__BOSK_VERBOSE__ && !inContent && typeof root.fetch === "function") {
+          const fetch = root.fetch.bind(root);
+          root.fetch = (input, init) => fetch(input, init).then((response) => {
+            try {
+              const where = new URL(response.url || String(input && input.url || input));
+              const path = where.origin + where.pathname;
+              if (response.ok) tell("fetch " + response.status + " " + path);
+              else response.clone().text().then((text) => tell("fetch " + response.status + " " + path + " " + text.slice(0, 500)), () => {});
+            } catch (e) {}
+            return response;
+          }, (error) => { tell("fetch failed " + String(input && input.url || input).split("?")[0] + " " + error); throw error; });
+        }
+        // (Bosk's own.) In a Debug build, each chrome.* call of an extension page or worker
+        // that fails: an extension can hide the error, as Bitwarden's login does.
+        if (__BOSK_VERBOSE__ && !inContent) {
+          const watch = (ns, where) => {
+            const names = new Set();
+            for (let o = ns; o && o !== Object.prototype; o = Object.getPrototypeOf(o)) Object.getOwnPropertyNames(o).forEach((k) => names.add(k));
+            for (const name of names) {
+              if (name === "constructor" || /^on[A-Z]/.test(name)) continue;
+              let f; try { f = ns[name]; } catch (e) { continue; }
+              if (typeof f === "function") {
+                put(ns, name, (...args) => {
+                  let result;
+                  try { result = f.apply(ns, args); } catch (e) { tell("api " + where + name + " threw: " + (e && e.message || e)); throw e; }
+                  if (result && typeof result.then === "function") result.then(null, (e) => tell("api " + where + name + " rejected: " + (e && e.message || e)));
+                  return result;
+                });
+              } else if (f && typeof f === "object" && !Array.isArray(f) && where.split(".").length < 3) watch(f, where + name + ".");
+            }
+          };
+          for (const space of Object.keys(chrome)) {
+            let ns; try { ns = chrome[space]; } catch (e) { continue; }
+            if (ns && typeof ns === "object") watch(ns, space + ".");
+          }
+        }
         // In a test run, what the extension says went wrong, too.
         if (__BOSK_VERBOSE__ && root.console) {
           let told = 0;

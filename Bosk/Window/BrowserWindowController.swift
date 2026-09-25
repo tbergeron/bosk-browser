@@ -197,7 +197,16 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate {
     func presentPopup(for action: WKWebExtension.Action, of context: WKWebExtensionContext) {
         guard let popover = action.popupPopover else { return }
         let anchor = extensionActions.button(for: context) ?? topBar
+        shownPopup = (context, popover)
         popover.show(relativeTo: anchor.bounds, of: anchor, preferredEdge: .minY)
+    }
+
+    /// The extension popup last shown in this window.
+    private var shownPopup: (context: WKWebExtensionContext, popover: NSPopover)?
+
+    /// The extension's popup is on screen in this window.
+    func showsPopup(of context: WKWebExtensionContext) -> Bool {
+        shownPopup?.context === context && shownPopup?.popover.isShown == true
     }
 
     // MARK: Find

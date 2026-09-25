@@ -135,12 +135,18 @@ extension ExtensionManager: WKWebExtensionControllerDelegate {
     /// `runtime.connectNative`: a worker's WebSocket (ExtensionSocket), or a native messaging host.
     func webExtensionController(_ controller: WKWebExtensionController, connectUsing port: WKWebExtension.MessagePort,
                                 for context: WKWebExtensionContext, completionHandler: @escaping ((any Error)?) -> Void) {
+        #if DEBUG
+        NSLog("Bosk: native port %@ from %@", port.applicationIdentifier ?? "?", context.uniqueIdentifier)
+        #endif
         switch port.applicationIdentifier {
         case ExtensionShim.socketApplication:
             ExtensionSocket.connect(port, from: context.uniqueIdentifier)
             completionHandler(nil)
         case ExtensionShim.application:
             // The port a worker's shim opens only to find what all ports share; it closes at once.
+            completionHandler(nil)
+        case ExtensionShim.aliveApplication:
+            watchWorker(port, of: context)
             completionHandler(nil)
         default:
             do {

@@ -20,6 +20,11 @@ enum ExtensionShimAnswers {
 
     /// Offscreen documents, one per extension, as Chrome allows.
     private static var offscreen: [String: WKWebView] = [:]
+
+    /// The extension is unloaded: WebKit closed its offscreen page, so the next load may make one.
+    static func forget(_ id: String) {
+        offscreen[id] = nil
+    }
     /// The side panel page each extension set, and if its button opens it.
     private static var panelPath: [String: String] = [:]
     private static var panelOnClick: Set<String> = []
@@ -390,11 +395,13 @@ enum ExtensionShimAnswers {
         // If this extension was loaded before in this run of Bosk: an "install" then is a restart.
         case "background.loadedBefore":
             return manager.loadedBefore.contains(id)
-        // A page found the worker gone, though WebKit believes it runs.
+        // A page found the worker gone, though WebKit believes it runs. Only while one of the
+        // extension's pages is on screen: a page that is closing gets no answer either, and
+        // its report once ended a worker that ran (two popups, in two windows).
         case "background.revive":
+            guard manager.hasVisiblePage(id) else { return nil }
             manager.revive(id, because: "its worker stopped answering")
             return nil
-
         case "debug.error":
             NSLog("Bosk: extension %@: %@", id, first as? String ?? "?")
             return nil

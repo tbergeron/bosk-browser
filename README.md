@@ -42,16 +42,12 @@ That request sends no cookies and nothing about you.
 
 ## Known issues
 
-- **Dark Reader sometimes gets stuck.** Its popup shows "Loading, please wait", and pages get a
-  plain, broken dark style, even on sites where Dark Reader is off. Its background stops
-  answering, so the early dark style it adds to each page never goes away. The cause is not known
-  yet. *To fix it for now, turn Dark Reader off and on again in Settings > Extensions, then reload
-  the pages.*
-- **Bitwarden from the Chrome Web Store freezes after you log in.** It opens a WebSocket from its
-  service worker, and WebKit locks up there, so the popup and the icon stop working. Use the Safari
-  build instead: in Settings, load an unpacked extension from
-  `/Applications/Bitwarden.app/Contents/PlugIns/safari.appex/Contents/Resources` (this needs the
-  Bitwarden Mac app).
+- **Bitwarden's popup can show a spinner in the first half minute after launch.** Its worker
+  often ends a few seconds after a logged-in start; Bosk sees it and loads the extension again
+  within 25 s. Close the popup and open it again.
+- **Dark Reader's "Loading, please wait" and Bitwarden's sync failures** came from one bug in
+  Bosk's extension shim, fixed on 2026-09-25. If Dark Reader still gets stuck, turn it off and on
+  again in Settings > Extensions, then reload the pages, and please report it.
 
 ## Build
 

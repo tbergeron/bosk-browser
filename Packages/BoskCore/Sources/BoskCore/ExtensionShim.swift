@@ -16,6 +16,8 @@ public enum ExtensionShim {
     public static let application = "bosk"
     /// The native port a worker's WebSocket goes through (ExtensionSocket.swift).
     public static let socketApplication = "bosk.socket"
+    /// The native port a worker holds so Bosk can see that it is still there (ExtensionManager).
+    public static let aliveApplication = "bosk.alive"
     public static let file = "bosk-shim.js"
     /// The first line of a worker that already carries the shim.
     static let marker = "/* Bosk: Chrome APIs WebKit lacks, filled in (ExtensionShim.swift) */"
