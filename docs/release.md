@@ -25,6 +25,9 @@ These steps need your Apple Developer account and your keychain, so they are not
    attached to each release, at
    `https://github.com/tbergeron/bosk-browser/releases/latest/download/appcast.xml`
    (the default in `scripts/release.sh`). GitHub sends that address to the newest release.
+5. **Homebrew tap.** Clone `tbergeron/homebrew-bosk` next to this repository (or set
+   `HOMEBREW_TAP` to its folder). It has the cask, `Casks/bosk.rb`. Users install with
+   `brew install --cask tbergeron/bosk/bosk`.
 
 ## Each release
 
@@ -43,10 +46,13 @@ The script:
 5. makes, signs, notarizes and staples the DMG;
 6. updates `appcast.xml`;
 7. with `--publish`: creates the GitHub release `v<version>` with the DMG and `appcast.xml`,
-   with notes made from the commits, and marks it as the latest release.
+   with notes made from the commits, and marks it as the latest release;
+8. with `--publish`: puts the new version and the DMG's SHA-256 in the cask, then commits and
+   pushes the tap. Before the build, it stops if the tap is missing or has changes.
 
 Without `--publish`, create the GitHub release `v<version>` yourself and attach both files.
-Mark it as the latest release, so the feed address points to it.
+Mark it as the latest release, so the feed address points to it. Then change `version` and
+`sha256` in the cask yourself (`shasum -a 256` of the DMG), and commit and push the tap.
 
 ## Check before publishing
 

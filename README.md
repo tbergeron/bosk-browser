@@ -16,6 +16,24 @@ A small, fast, opinionated web browser for macOS, built on WebKit.
 
 Requires macOS 26 or later.
 
+## Install
+
+With [Homebrew](https://brew.sh):
+
+```bash
+brew install --cask tbergeron/bosk/bosk
+```
+
+Or download the DMG from [Releases](https://github.com/tbergeron/bosk-browser/releases/latest),
+open it, and drag Bosk to Applications.
+
+Bosk updates itself (Bosk > Check for Updates…). If you installed with Homebrew,
+`brew upgrade --cask bosk` also works. To remove Bosk and all its data:
+
+```bash
+brew uninstall --zap --cask bosk
+```
+
 ## Privacy
 
 Bosk has no backend and needs no account. It collects nothing about you: your history, tabs and
