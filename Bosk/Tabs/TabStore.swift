@@ -86,6 +86,14 @@ final class TabStore {
         return tab
     }
 
+    /// A copy of the tab below it, with the same back and forward history.
+    func duplicate(_ tab: Tab) {
+        tab.saveSessionState()
+        let copy = Tab(url: tab.url, title: tab.title, sessionState: tab.sessionState)
+        copy.favicon = tab.favicon
+        insert(copy, after: tab, select: true)
+    }
+
     /// - Parameter after: The new tab goes below this tab, in its group; nil puts it at the end.
     func insert(_ tab: Tab, after: Tab?, select: Bool) {
         tab.store = self

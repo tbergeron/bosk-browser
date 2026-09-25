@@ -541,6 +541,7 @@ extension SidebarView: NSMenuDelegate {
         // A right-click outside the selection is for that tab only.
         clearMultiSelection()
         menu.addItem(ClosureMenuItem("Pin Tab") { [weak self] in self?.store.pin(tab) })
+        menu.addItem(ClosureMenuItem("Duplicate Tab") { [weak self] in self?.store.duplicate(tab) })
         menu.addItem(ClosureMenuItem("Copy Address") { tab.copyAddress() })
         if let reader = ReaderMode.menuItem(for: tab) { menu.addItem(reader) }
         menu.addItem(.separator())
