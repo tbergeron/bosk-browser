@@ -3,8 +3,10 @@ import WebKit
 
 /// Makes the Chrome Web Store's own "Add to Chrome" button install into Bosk.
 /// The store enables the button only for a Chrome user agent and only when the page
-/// has `chrome.webstorePrivate` and `chrome.management`. On the store host, Bosk sends a
-/// Chrome user agent and adds those two APIs with a page script that calls Bosk.
+/// has `chrome.webstorePrivate` and `chrome.management`. On the store host, a page script
+/// gives `navigator` a Chrome user agent and adds those two APIs, which call Bosk.
+/// The script does not set the web view's user agent: when a page loads with another user
+/// agent, WebKit stops the extension workers and does not start them again (found by Search).
 /// The store scripts can change at any time; the "Add to Bosk" button is the fallback.
 @MainActor
 enum WebStoreBridge {
@@ -13,14 +15,9 @@ enum WebStoreBridge {
 
     /// The store checks that the user agent names are exactly "Mozilla AppleWebKit Chrome Safari".
     /// Keep the version below 142: from 142 the store can use a different check.
-    private static let chromeVersion = "141.0.0.0"
+    static let chromeVersion = "141.0.0.0"
     private static let chromeUserAgent =
         "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/\(chromeVersion) Safari/537.36"
-
-    /// The custom user agent for a main frame navigation to this address (nil is WebKit's).
-    static func userAgent(for url: URL?) -> String? {
-        url?.host() == host ? chromeUserAgent : nil
-    }
 
     static func install(in controller: WKUserContentController) {
         controller.addUserScript(WKUserScript(source: script, injectionTime: .atDocumentStart,
@@ -33,6 +30,11 @@ enum WebStoreBridge {
     private static let script = """
         (() => {
           if (location.hostname !== '\(host)') return;
+          const userAgent = '\(chromeUserAgent)';
+          for (const [key, value] of [['userAgent', userAgent], ['appVersion', userAgent.replace(/^Mozilla\\//, '')],
+                                      ['vendor', 'Google Inc.']]) {
+            Object.defineProperty(Navigator.prototype, key, { get: () => value, configurable: true });
+          }
           const handler = window.webkit.messageHandlers.\(messageName);
           const chrome = window.chrome = window.chrome || {};
           chrome.runtime = chrome.runtime || {};

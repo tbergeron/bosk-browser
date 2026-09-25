@@ -47,15 +47,41 @@ extensions.** A per-extension memory display in Settings would help users choose
 - `sidePanel` and `bookmarks` are compiled out of WebKit.
 - `notifications` is not available in this build (1Password fails on it).
 - `webNavigation.onHistoryStateUpdated` is missing (Vimium fails on it).
-- Native messaging goes through the app's delegate. Bosk has no native apps, so it answers each
-  message with an error after 10 s (a quick error made Bitwarden's message loop spin). Password
-  managers that talk to a desktop app (1Password) cannot work.
-- Extension pages (background, popup, options) get the tabs' Safari user agent, because WebKit's
-  own names no browser. A Chrome user agent made Bitwarden's Safari build call Chrome-only APIs.
+- Native messaging goes through the app's delegate. Bosk runs the Chrome native messaging hosts
+  that apps register in Chrome's `NativeMessagingHosts` folders, for the extension IDs that each
+  host allows. Other messages fail, slowly after a dozen tries in a second (Bitwarden's
+  message loop spins on a quick error).
+- Extension web views get the tabs' Safari user agent. When a page loads with another user agent,
+  WebKit stops the extension workers and does not start them again, so Bosk never changes it
+  (the Web Store's Chrome user agent is set by a page script). The shim tells extension pages
+  and workers that they run in Chrome, in `navigator.userAgent`.
 - A WebSocket opened in an extension service worker deadlocks its process. WebKit runs the worker
   on the process's main thread, and `new WebSocket` waits for the main thread
   (`WorkerThreadableWebSocketChannel`, found with a CPU sample). A background page does not have
-  this problem. Bitwarden's Chrome Web Store build fails on it.
+  this problem. The shim works around it (see below).
+- WebKit sometimes does not start a worker again after it unloads it. Then every message to the
+  worker waits forever. The shim works around it (see below).
+
+## The shim (ported from Search)
+
+Bosk adds `bosk-shim.js` to each extension, at install and at each load: first in the
+background, in each content script and in each HTML page (`ExtensionShim.swift` in BoskCore).
+It is ported from [Search](https://github.com/driceroland/Search) by Office Commun (MIT
+License). The script defines the Chrome APIs that WebKit does not have (bookmarks, history,
+downloads, offscreen, notifications, fontSettings, idle, privacy and more). It sends each call as
+a native message to "bosk", and `ExtensionShimAnswers.swift` answers from Bosk's own data.
+It also:
+
+- Makes a service worker's WebSocket in the app, with URLSession, over a native port
+  (`ExtensionSocket.swift`). Tested on 2026-09-25 with a test worker and a local echo server:
+  the socket opened, sent and received, and the worker did not freeze.
+- Pings the worker before a page's message. With no answer, Bosk asks WebKit to load the
+  background again (3 tries), then unloads and loads the extension (at most once a minute).
+  Bosk also does this when WebKit reports that a worker failed to load.
+
+Not ported: Search's passkey patch (it needs the passkey entitlement), and Search's
+`chrome-extension://` page addresses (existing extension pages would lose their storage).
+Bosk's bookmarks have no folders, and tab indexes are in the focused window only.
 
 ## Things Bosk does to keep extensions fast
 

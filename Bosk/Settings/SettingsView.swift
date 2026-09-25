@@ -331,6 +331,8 @@ private struct AboutPane: View {
     private let libraries: [(name: String, use: String, links: [(String, String)])] = [
         ("Defuddle", "Reader mode · by Steph Ango · MIT License",
          [("Website", "https://stephango.com"), ("GitHub", "https://github.com/kepano/defuddle")]),
+        ("Search", "Chrome extension shim · by Office Commun · MIT License",
+         [("GitHub", "https://github.com/driceroland/Search")]),
         ("Sparkle", "App updates · MIT License",
          [("Website", "https://sparkle-project.org"), ("GitHub", "https://github.com/sparkle-project/Sparkle")]),
     ]

@@ -94,6 +94,15 @@ actor HistoryStore {
         return pages(containing: String(word))
     }
 
+    /// Deletes the pages last visited between the two dates (chrome.history and chrome.browsingData).
+    func remove(from start: Date, to end: Date) {
+        guard let statement = Self.prepare(db, "DELETE FROM history WHERE last_visit BETWEEN ?1 AND ?2") else { return }
+        sqlite3_bind_double(statement, 1, start.timeIntervalSince1970)
+        sqlite3_bind_double(statement, 2, min(end, .distantFuture).timeIntervalSince1970)
+        sqlite3_step(statement)
+        sqlite3_finalize(statement)
+    }
+
     /// The History list: pages that contain the first word of `query`, or with no text,
     /// the newest pages. SuggestionRanker.historyRows filters and orders them.
     func visits(for query: String) -> [SuggestionRanker.HistoryItem] {

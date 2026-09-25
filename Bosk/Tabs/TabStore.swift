@@ -13,7 +13,7 @@ protocol TabStoreDelegate: AnyObject {
 /// The tabs of one window. Every change to a tab goes through here.
 @MainActor
 final class TabStore {
-    private struct ClosedTab {
+    struct ClosedTab {
         let url: URL?
         let title: String
         let sessionState: Data?
@@ -26,7 +26,7 @@ final class TabStore {
     /// The tab groups of this window, in no special order; the tab list gives the order.
     private(set) var groups: [TabGroup] = []
     private(set) var selectedTab: Tab?
-    private var closedTabs: [ClosedTab] = []
+    private(set) var closedTabs: [ClosedTab] = []
     weak var delegate: TabStoreDelegate?
     /// The window that shows these tabs. Page dialogs open as sheets on it.
     weak var window: NSWindow?

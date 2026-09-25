@@ -21,7 +21,10 @@ extension Tab: WKNavigationDelegate {
         if navigationAction.request.url?.scheme == ReaderPage.scheme { preferences.allowsContentJavaScript = false }
         if navigationAction.targetFrame?.isMainFrame != false {
             AdBlocker.shared.configure(preferences, for: navigationAction.request.url)
-            webView.customUserAgent = WebStoreBridge.userAgent(for: navigationAction.request.url)
+        }
+        // An extension's sign-in (chrome.identity) ends at its chromiumapp.org address.
+        if let url = navigationAction.request.url, ExtensionAuth.intercept(url, in: self) {
+            return (.cancel, preferences)
         }
         return (.allow, preferences)
     }

@@ -69,6 +69,11 @@ final class ExtensionManager: NSObject {
         for record in records where record.enabled {
             do {
                 try await load(record)
+                // One after another, a moment apart: started all at once, WebKit fails some of
+                // their workers and does not try them again (found by Search, see ExtensionShim).
+                if contexts[record.id]?.webExtension.hasBackgroundContent == true {
+                    try? await Task.sleep(for: .milliseconds(400))
+                }
             } catch {
                 NSLog("Bosk: extension %@ did not load: %@", record.fileName, "\(error)")
             }
@@ -118,7 +123,28 @@ final class ExtensionManager: NSObject {
         }.value
     }
 
-    private func load(_ record: Record) async throws {
+    /// Adds the shim this build carries (ExtensionShim), off the main thread: the first launch
+    /// after an update reads and rewrites every script and page of each extension.
+    /// - Parameter fresh: The folder was just unpacked or copied in.
+    private func prepare(_ fileName: String, fresh: Bool) async throws {
+        let folder = directory.appending(path: fileName)
+        let version = WebStoreBridge.chromeVersion
+        try await Task.detached(priority: .userInitiated) {
+            try ExtensionShim.prepare(folder, chromeVersion: version, fresh: fresh)
+        }.value
+    }
+
+    /// The installed extension's folder.
+    func folder(for id: String) -> URL {
+        directory.appending(path: records.first { $0.id == id }?.fileName ?? id)
+    }
+
+    private func load(_ record: Record, fresh: Bool = false) async throws {
+        do {
+            try await prepare(record.fileName, fresh: fresh)
+        } catch {
+            NSLog("Bosk: could not add the shim to %@: %@", record.fileName, "\(error)")
+        }
         let webExtension = try await WKWebExtension(resourceBaseURL: directory.appending(path: record.fileName))
         let context = WKWebExtensionContext(for: webExtension)
         // A stable ID keeps the extension's storage and its chrome-extension:// origin.
@@ -127,11 +153,66 @@ final class ExtensionManager: NSObject {
         context.deniedPermissions = Self.permissions(record.deniedPermissions)
         context.grantedPermissionMatchPatterns = Self.patterns(record.grantedMatchPatterns)
         context.deniedPermissionMatchPatterns = Self.patterns(record.deniedMatchPatterns)
+        // The shim reaches Bosk through native messages.
+        context.setPermissionStatus(.grantedExplicitly, for: .nativeMessaging)
         #if DEBUG
         context.isInspectable = true
         #endif
         try controller.load(context)
+        watchErrors(of: context)
+        if contexts[record.id] == nil, loadsThisRun.contains(record.id) { loadedBefore.insert(record.id) }
+        loadsThisRun.insert(record.id)
         contexts[record.id] = context
+    }
+
+    // MARK: Restarting (ported from Search by Office Commun, MIT License)
+
+    /// Loaded at least once in this run of Bosk, and loaded again. The shim then tells the
+    /// extension "update", not "install", so it does not open its welcome page again.
+    private var loadsThisRun: Set<String> = []
+    private(set) var loadedBefore: Set<String> = []
+    private var revived: [String: Date] = [:]
+    private var errorObservers: [String: NSObjectProtocol] = [:]
+    /// Recent failed native messages, by extension and host (see ExtensionBridge).
+    var nativeFailures: [String: [Date]] = [:]
+
+    /// Unloads and loads an extension whose worker does not start again, as a relaunch would.
+    /// At most once a minute, so an extension that can never start does not loop.
+    func revive(_ id: String, because reason: String) {
+        guard contexts[id] != nil, Date().timeIntervalSince(revived[id] ?? .distantPast) > 60 else { return }
+        revived[id] = Date()
+        saveRegistry() // The record then has the permissions granted since launch.
+        guard let record = records.first(where: { $0.id == id }), record.enabled else { return }
+        NSLog("Bosk: restarted extension %@: %@", record.fileName, reason)
+        unload(id)
+        Task {
+            try? await load(record)
+            changed()
+        }
+    }
+
+    /// WebKit records a worker that failed to start as an error on its context, and then does
+    /// not try again. The extension is loaded again as soon as that shows.
+    private func watchErrors(of context: WKWebExtensionContext) {
+        let id = context.uniqueIdentifier
+        if let old = errorObservers[id] { NotificationCenter.default.removeObserver(old) }
+        errorObservers[id] = NotificationCenter.default.addObserver(
+            forName: WKWebExtensionContext.errorsDidUpdateNotification, object: context, queue: .main
+        ) { [weak context] _ in
+            MainActor.assumeIsolated {
+                guard let context, ExtensionManager.shared.contexts[id] === context else { return }
+                let failed = context.errors.contains { error in
+                    let error = error as NSError
+                    return error.domain == WKWebExtensionContext.errorDomain
+                        && error.code == WKWebExtensionContext.Error.backgroundContentFailedToLoad.rawValue
+                }
+                guard failed else { return }
+                DispatchQueue.main.asyncAfter(deadline: .now() + 2) {
+                    guard ExtensionManager.shared.contexts[id] === context else { return }
+                    ExtensionManager.shared.revive(id, because: "its worker failed to start")
+                }
+            }
+        }
     }
 
     // MARK: Installing
@@ -165,7 +246,7 @@ final class ExtensionManager: NSObject {
         let installed = directory.appending(path: record.fileName)
         try? FileManager.default.removeItem(at: installed)
         try FileManager.default.copyItem(at: source, to: installed)
-        if record.enabled { try await load(record) }
+        if record.enabled { try await load(record, fresh: true) }
         changed()
     }
 
@@ -192,8 +273,11 @@ final class ExtensionManager: NSObject {
 
     /// Shows what the extension asks for. "Add" grants it all, as Chrome does at install.
     private func finishInstall(_ record: Record, in window: NSWindow?) async throws {
+        try await prepare(record.fileName, fresh: true)
         let webExtension = try await WKWebExtension(resourceBaseURL: directory.appending(path: record.fileName))
-        let summary = PermissionText.summary(permissions: webExtension.requestedPermissions,
+        // The prompt shows what the extension asked for, not what Bosk added for its shim.
+        let added = Set(ExtensionShim.addedPermissions(in: directory.appending(path: record.fileName)))
+        let summary = PermissionText.summary(permissions: webExtension.requestedPermissions.filter { !added.contains($0.rawValue) },
                                              patterns: webExtension.allRequestedMatchPatterns)
         let name = webExtension.displayName ?? "This extension"
         guard await ExtensionPrompts.confirm(title: "Add “\(name)”?", message: summary,
@@ -236,7 +320,10 @@ final class ExtensionManager: NSObject {
 
     private func unload(_ id: String) {
         guard let context = contexts.removeValue(forKey: id) else { return }
+        if let observer = errorObservers.removeValue(forKey: id) { NotificationCenter.default.removeObserver(observer) }
         try? controller.unload(context)
+        // Its ports show as gone only after WebKit has had a turn.
+        DispatchQueue.main.async { ExtensionNative.stopOrphans() }
     }
 
     // MARK: Saving
@@ -296,6 +383,7 @@ final class ExtensionManager: NSObject {
     func didOpen(_ tab: Tab) { controller.didOpenTab(tab) }
 
     func didClose(_ tab: Tab, windowIsClosing: Bool = false) {
+        ExtensionAuth.tabClosed(tab)
         controller.didCloseTab(tab, windowIsClosing: windowIsClosing)
     }
 

@@ -1,11 +1,12 @@
 import AppKit
+import BoskCore
 import WebKit
 
 // WebKit asks Bosk about tabs, windows and permissions through these conformances.
 // A sleeping tab has no web view; WebKit still gets its URL and title.
 
 extension ExtensionManager: WKWebExtensionControllerDelegate {
-    private var focusedWindowController: BrowserWindowController? {
+    var focusedWindowController: BrowserWindowController? {
         (NSApp.keyWindow?.windowController as? BrowserWindowController)
             ?? (NSApp.mainWindow?.windowController as? BrowserWindowController)
             ?? windowsProvider?().first
@@ -104,17 +105,50 @@ extension ExtensionManager: WKWebExtensionControllerDelegate {
         completionHandler(nil)
     }
 
-    /// Bosk has no native apps, so each native message fails. The error comes after a delay:
-    /// Bitwarden sends "sleep" in a loop and waits for the reply as its timer. An immediate
-    /// error makes the loop spin without a stop.
+    /// `runtime.sendNativeMessage`. To "bosk": the Chrome APIs WebKit does not have, answered by
+    /// Bosk (ExtensionShimAnswers). To another name: a Chrome native messaging host on this Mac.
     func webExtensionController(_ controller: WKWebExtensionController, sendMessage message: Any,
                                 toApplicationWithIdentifier applicationIdentifier: String?,
                                 for context: WKWebExtensionContext,
                                 replyHandler: @escaping (Any?, (any Error)?) -> Void) {
-        DispatchQueue.main.asyncAfter(deadline: .now() + 10) {
-            replyHandler(nil, NSError(domain: "Bosk", code: 0, userInfo: [
-                NSLocalizedDescriptionKey: "Native messaging is not supported.",
-            ]))
+        guard let host = applicationIdentifier, host != ExtensionShim.application else {
+            Task { replyHandler(await ExtensionShimAnswers.answer(message, from: context), nil) }
+            return
+        }
+        let id = context.uniqueIdentifier
+        // JSON values that WebKit made for this call only; nothing else holds them.
+        nonisolated(unsafe) let message = message
+        Task {
+            do {
+                replyHandler(try await ExtensionNative.send(message, to: host, from: id), nil)
+            } catch {
+                // An extension that asks a missing app in a loop (Bitwarden's "sleep") gets its
+                // answer slowly after a dozen tries in a second, so it cannot flood Bosk.
+                let key = id + "→" + host, now = Date()
+                nativeFailures[key] = (nativeFailures[key] ?? []).filter { now.timeIntervalSince($0) < 1 } + [now]
+                if (nativeFailures[key]?.count ?? 0) > 12 { try? await Task.sleep(for: .seconds(1)) }
+                replyHandler(nil, error)
+            }
+        }
+    }
+
+    /// `runtime.connectNative`: a worker's WebSocket (ExtensionSocket), or a native messaging host.
+    func webExtensionController(_ controller: WKWebExtensionController, connectUsing port: WKWebExtension.MessagePort,
+                                for context: WKWebExtensionContext, completionHandler: @escaping ((any Error)?) -> Void) {
+        switch port.applicationIdentifier {
+        case ExtensionShim.socketApplication:
+            ExtensionSocket.connect(port, from: context.uniqueIdentifier)
+            completionHandler(nil)
+        case ExtensionShim.application:
+            // The port a worker's shim opens only to find what all ports share; it closes at once.
+            completionHandler(nil)
+        default:
+            do {
+                try ExtensionNative.connect(port, from: context.uniqueIdentifier)
+                completionHandler(nil)
+            } catch {
+                completionHandler(error)
+            }
         }
     }
 }

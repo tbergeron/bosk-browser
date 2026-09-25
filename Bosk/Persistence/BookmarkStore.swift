@@ -35,6 +35,14 @@ final class BookmarkStore {
         save()
     }
 
+    /// Changes a bookmark's title or address (chrome.bookmarks.update).
+    func update(id: UUID, title: String?, url: URL?) {
+        guard let index = entries.firstIndex(where: { $0.id == id }) else { return }
+        if let title { entries[index].title = title }
+        if let url { entries[index].url = url }
+        save()
+    }
+
     func bookmark(for url: URL) -> Bookmark? {
         entries.first { $0.url == url }
     }
