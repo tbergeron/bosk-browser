@@ -1,6 +1,4 @@
-<p align="center">
-  <img src="docs/icon.png" width="128" height="128" alt="Bosk icon">
-</p>
+![Bosk in light mode on the left and dark mode on the right](docs/screenshot.webp)
 
 # Bosk
 
