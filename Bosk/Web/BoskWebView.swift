@@ -22,13 +22,7 @@ final class BoskWebView: WKWebView {
            let reader = ReaderMode.menuItem(for: tab) {
             menu.insertItem(reader, at: reload + 1)
         }
-        if let tab = WebViewFactory.tab(for: self) {
-            let extensionItems = ExtensionManager.shared.loadedContexts.flatMap { $0.menuItems(for: tab) }
-            if !extensionItems.isEmpty {
-                menu.addItem(.separator())
-                extensionItems.forEach(menu.addItem)
-            }
-        }
+        // Extension items: WebKit adds them itself, with the clicked image or link.
     }
 }
 

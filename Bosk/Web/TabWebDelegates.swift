@@ -10,7 +10,9 @@ extension Tab: WKNavigationDelegate {
                  preferences: WKWebpagePreferences) async -> (WKNavigationActionPolicy, WKWebpagePreferences) {
         if navigationAction.shouldPerformDownload { return (.download, preferences) }
         // Cmd-click (or middle-click) on a link: open it in a background tab below this one.
-        let isNewTabClick = navigationAction.modifierFlags.contains(.command) || navigationAction.buttonNumber == 2
+        // WebKit gives buttonNumber as a mask: 1 left, 2 right, 4 middle. Right (2) is the page
+        // menu's "Open Link in New Tab", which already has its own new tab.
+        let isNewTabClick = navigationAction.modifierFlags.contains(.command) || navigationAction.buttonNumber == 4
         if navigationAction.navigationType == .linkActivated, isNewTabClick, let url = navigationAction.request.url {
             let tab = Tab(url: url)
             tab.favicon = FaviconStore.shared.cachedIcon(for: url)
@@ -156,6 +158,13 @@ extension Tab: WKUIDelegate {
             return
         }
         hoveredLink = hitTestResult.value(forKey: "absoluteLinkURL") as? URL
+    }
+
+    /// Private WKUIDelegate call: "Download Image" and "Download Linked File" in the page menu
+    /// make a download here, not through the navigation delegate. Without a delegate it does nothing.
+    @objc(_webView:contextMenuDidCreateDownload:)
+    func webView(_ webView: WKWebView, contextMenuDidCreate download: WKDownload) {
+        DownloadManager.shared.track(download)
     }
 
     func webView(_ webView: WKWebView, runJavaScriptAlertPanelWithMessage message: String,
