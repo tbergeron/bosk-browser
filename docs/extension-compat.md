@@ -11,10 +11,11 @@ through "Add to Bosk" (the Debug option `-BoskInstallWebStoreIDs` does the same 
 | Extension | Version | Installs | Works | Notes |
 |---|---|---|---|---|
 | uBlock Origin Lite | 2026.920.1710 | Yes | **Yes** | Blocks `adsbygoogle.js` on `/ads` (scripts/test-pages.py). Popup opens. Blocking starts after WebKit compiles the rules: about 20 s after install, and again in the background at each launch. |
-| Dark Reader | 4.9.132 | Yes | **Yes** | Pages turn dark (tested on Wikipedia). |
+| Dark Reader | 4.9.132 | Yes | **Partly** | Pages turn dark (tested on Wikipedia). Sometimes its background stops answering (seen 2026-09-24, cause not known). Then the popup stays at "Loading, please wait", and each page keeps the early dark style from `inject/fallback.js`, also on sites where Dark Reader is off. Turning it off and on in Settings, then reloading the pages, fixes it for now. |
 | Return YouTube Dislike | 4.0.5 | Yes | Loads without errors | Not tested on YouTube. |
 | Vimium | 2.4.2 | Yes | **Partly** | Background script fails: WebKit has no `chrome.webNavigation.onHistoryStateUpdated`. Commands that need the background do not work. Key handling in the page: not tested (needs a person). |
-| Bitwarden | 2026.8.0 | Yes | **Partly** | Popup opens to the log in screen (2026-09-24). Before, the background failed on `this.device.toString`: WebKit's user agent in extension pages named no browser. Bosk now says Chrome there. Log in and autofill not tested: they need an account. Desktop app features need native messaging. |
+| Bitwarden (Chrome Web Store) | 2026.8.0 | Yes | **No** | Freezes after log in (2026-09-24). It opens a WebSocket from its service worker, and WebKit deadlocks there (see the gaps below). The popup, the icon and the Web Inspector console then stop working. Use the Safari build. |
+| Bitwarden (Safari build, loaded unpacked) | 2026.8.0 | Yes | **Partly** | Load `/Applications/Bitwarden.app/Contents/PlugIns/safari.appex/Contents/Resources` (needs the Bitwarden Mac app). It runs as a background page, so its WebSocket works. Popup opens to the start screen (Debug build, 2026-09-24). With a Chrome user agent its popup was blank, so extension pages use the Safari user agent. Copy from the popup and Touch ID unlock need native messaging: not tested. Log in and autofill: not tested by Claude (they need an account). |
 | 1Password | 8.12.37.1 | Yes | **No** | Background fails: WebKit has no `chrome.notifications`. As expected: 1Password also needs native messaging to its app. |
 | Bosk Test Extension (scripts/test-extension) | 1.0 | Yes | **Yes** | Content script on all pages (also in a tab woken from sleep), background worker, badge, popup with `chrome.tabs.query`. |
 
@@ -46,10 +47,15 @@ extensions.** A per-extension memory display in Settings would help users choose
 - `sidePanel` and `bookmarks` are compiled out of WebKit.
 - `notifications` is not available in this build (1Password fails on it).
 - `webNavigation.onHistoryStateUpdated` is missing (Vimium fails on it).
-- Native messaging goes through the app's delegate; Bosk does not implement it, so password
+- Native messaging goes through the app's delegate. Bosk has no native apps, so it answers each
+  message with an error after 10 s (a quick error made Bitwarden's message loop spin). Password
   managers that talk to a desktop app (1Password) cannot work.
-- Extension pages (background, popup, options) get a Chrome user agent, because WebKit's own
-  names no browser. Extensions that check for Chrome by API shape may still fail.
+- Extension pages (background, popup, options) get the tabs' Safari user agent, because WebKit's
+  own names no browser. A Chrome user agent made Bitwarden's Safari build call Chrome-only APIs.
+- A WebSocket opened in an extension service worker deadlocks its process. WebKit runs the worker
+  on the process's main thread, and `new WebSocket` waits for the main thread
+  (`WorkerThreadableWebSocketChannel`, found with a CPU sample). A background page does not have
+  this problem. Bitwarden's Chrome Web Store build fails on it.
 
 ## Things Bosk does to keep extensions fast
 

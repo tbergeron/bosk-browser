@@ -22,6 +22,19 @@ Bosk has no backend and needs no account. It collects nothing about you: your hi
 settings stay on your Mac. Once a week, the ad blocker downloads its filter lists from easylist.to.
 That request sends no cookies and nothing about you.
 
+## Known issues
+
+- **Dark Reader sometimes gets stuck.** Its popup shows "Loading, please wait", and pages get a
+  plain, broken dark style, even on sites where Dark Reader is off. Its background stops
+  answering, so the early dark style it adds to each page never goes away. The cause is not known
+  yet. *To fix it for now, turn Dark Reader off and on again in Settings > Extensions, then reload
+  the pages.*
+- **Bitwarden from the Chrome Web Store freezes after you log in.** It opens a WebSocket from its
+  service worker, and WebKit locks up there, so the popup and the icon stop working. Use the Safari
+  build instead: in Settings, load an unpacked extension from
+  `/Applications/Bitwarden.app/Contents/PlugIns/safari.appex/Contents/Resources` (this needs the
+  Bitwarden Mac app).
+
 ## Build
 
 ```bash
