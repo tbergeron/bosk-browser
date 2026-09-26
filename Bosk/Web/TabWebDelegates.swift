@@ -28,7 +28,38 @@ extension Tab: WKNavigationDelegate {
         if let url = navigationAction.request.url, ExtensionAuth.intercept(url, in: self) {
             return (.cancel, preferences)
         }
+        if let url = navigationAction.request.url, let app = Self.externalApp(for: url, in: webView) {
+            await openInApp(url, app: app, in: webView)
+            return (.cancel, preferences)
+        }
         return (.allow, preferences)
+    }
+
+    /// The Mac app for a URL that no page can show (xcode:, mailto:, zoommtg: and more).
+    /// Nil for web schemes, for schemes this browser serves, and when no app has the scheme.
+    private static func externalApp(for url: URL, in webView: WKWebView) -> URL? {
+        guard let scheme = url.scheme?.lowercased(), !WKWebView.handlesURLScheme(scheme),
+              webView.configuration.urlSchemeHandler(forURLScheme: scheme) == nil,
+              let app = NSWorkspace.shared.urlForApplication(toOpen: url),
+              app != Bundle.main.bundleURL else { return nil }
+        return app
+    }
+
+    /// Like Safari, ask before a page opens another app: a page can go to such a URL
+    /// without a click.
+    private func openInApp(_ url: URL, app: URL, in webView: WKWebView) async {
+        let name = FileManager.default.displayName(atPath: app.path).replacingOccurrences(of: ".app", with: "")
+        if let window = store?.window {
+            let alert = NSAlert()
+            alert.messageText = "Open this link in “\(name)”?"
+            if let host = webView.url?.host(), !host.isEmpty { alert.informativeText = "\(host) wants to open \(name)." }
+            alert.addButton(withTitle: "Open")
+            alert.addButton(withTitle: "Cancel")
+            guard await alert.beginSheetModal(for: window) == .alertFirstButtonReturn else { return }
+        }
+        NSWorkspace.shared.open(url)
+        // A tab that opened only for this link has no page: close it.
+        if webView.backForwardList.currentItem == nil { store?.close(self) }
     }
 
     func webView(_ webView: WKWebView, decidePolicyFor navigationResponse: WKNavigationResponse) async
