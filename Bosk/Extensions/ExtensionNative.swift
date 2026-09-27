@@ -244,9 +244,13 @@ final class HostPipe: @unchecked Sendable {
         lock.lock()
         let pending = waiters
         waiters = []
+        // Both the end of output and the host's exit call this, often at
+        // once and on different threads: taken under the lock, onExit runs
+        // once and is released once.
+        let exit = onExit
+        onExit = nil
         lock.unlock()
         pending.forEach { $0.resume(throwing: ExtensionNative.Refused(why: "Native host has exited.")) }
-        onExit?()
-        onExit = nil
+        exit?()
     }
 }
