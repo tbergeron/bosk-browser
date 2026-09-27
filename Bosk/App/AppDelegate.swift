@@ -7,6 +7,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
     private var windowControllers: [BrowserWindowController] = []
 
     static func main() {
+        // AppKit catches an exception in the run loop and continues. Inside a Swift task that
+        // leaves the task runtime in a bad state, and Bosk crashed 14 s later in a timer with
+        // no useful stack (0.15.5). Stop at the exception, so the report shows it.
+        UserDefaults.standard.register(defaults: ["NSApplicationCrashOnExceptions": true])
         let app = NSApplication.shared
         let delegate = AppDelegate()
         app.delegate = delegate

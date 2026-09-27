@@ -305,7 +305,10 @@ enum ExtensionShimAnswers {
                 let script = background["service_worker"] as? String ?? background["page"] as? String
                 add("BACKGROUND", script.map { context.baseURL.appending(path: $0) })
             }
-            if let action = context.action(for: nil), action.popupPopover?.isShown == true {
+            // Bosk's own record of shown popups: WebKit's `popupPopover` makes the popup when
+            // first read, and that threw here once (NSInvalidArgumentException, 0.15.5).
+            if manager.windowsProvider?().contains(where: { $0.showsPopup(of: context) }) == true,
+               let action = context.action(for: nil) {
                 add("POPUP", action.popupWebView?.url)
             }
             if let page = offscreen[id] { add("OFFSCREEN_DOCUMENT", page.url) }
