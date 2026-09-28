@@ -55,7 +55,8 @@ final class SettingsModel {
     var sleepsTabs = Preferences.sleepsTabs
     var tabSleepAfter = Preferences.tabSleepAfter
     var blocksAds = Preferences.blocksAds
-    var adListsUpdated = AdBlocker.shared.listsUpdated
+    var hidesCookieNotices = Preferences.hidesCookieNotices
+    var filterListsUpdated = SettingsModel.checkFilterListsUpdated()
     var downloadFolder = Preferences.downloadFolder
     var asksWhereToSave = Preferences.asksWhereToSave
     var extensions: [ExtensionRow] = []
@@ -67,9 +68,12 @@ final class SettingsModel {
     init() {
         refresh()
         ExtensionManager.shared.addObserver(self) { [weak self] in self?.refresh() }
-        AdBlocker.shared.addObserver(self) { [weak self] in
-            self?.blocksAds = Preferences.blocksAds
-            self?.adListsUpdated = AdBlocker.shared.listsUpdated
+        for blocker in [ContentBlocker.ads, ContentBlocker.cookies] {
+            blocker.addObserver(self) { [weak self] in
+                self?.blocksAds = Preferences.blocksAds
+                self?.hidesCookieNotices = Preferences.hidesCookieNotices
+                self?.filterListsUpdated = Self.checkFilterListsUpdated()
+            }
         }
     }
 
@@ -220,7 +224,20 @@ final class SettingsModel {
     // MARK: Privacy
 
     func setBlocksAds(_ value: Bool) {
-        AdBlocker.shared.setOn(value)
+        ContentBlocker.ads.setOn(value)
+    }
+
+    func setHidesCookieNotices(_ value: Bool) {
+        ContentBlocker.cookies.setOn(value)
+    }
+
+    /// The oldest download of the lists in use (of all lists when both blockers are off).
+    /// nil when a list in use was never downloaded.
+    private static func checkFilterListsUpdated() -> Date? {
+        let blockers = [ContentBlocker.ads, ContentBlocker.cookies]
+        let inUse = blockers.filter(\.isOn)
+        let dates = (inUse.isEmpty ? blockers : inUse).map(\.listsUpdated)
+        return dates.contains(nil) ? nil : dates.compactMap { $0 }.min()
     }
 
     func clearHistory() {

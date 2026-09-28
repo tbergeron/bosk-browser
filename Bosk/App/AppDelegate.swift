@@ -21,7 +21,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
         NSApp.mainMenu = MainMenu.make()
         BookmarkStore.shared.load()
         // Before the session, so the saved rule list is on the tabs as soon as possible.
-        AdBlocker.shared.start()
+        ContentBlocker.ads.start()
+        ContentBlocker.cookies.start()
         Preferences.applyAppearance()
         Updater.start()
         SessionStore.shared.snapshotProvider = { [weak self] in

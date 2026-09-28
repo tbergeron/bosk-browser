@@ -301,8 +301,14 @@ private struct PrivacyPane: View {
                                                                set: { model.setBlocksAds($0) }))
                     .toggleStyle(.switch).labelsHidden()
             }
-            SettingsRow(title: "Filter lists", subtitle: "EasyList and EasyPrivacy, updated each week") {
-                Text(model.adListsUpdated?.formatted(date: .abbreviated, time: .shortened) ?? "Not downloaded yet")
+            SettingsRow(title: "Hide cookie notices",
+                        subtitle: "Use the shield in the address bar to show them on one site") {
+                Toggle("Hide cookie notices", isOn: Binding(get: { model.hidesCookieNotices },
+                                                            set: { model.setHidesCookieNotices($0) }))
+                    .toggleStyle(.switch).labelsHidden()
+            }
+            SettingsRow(title: "Filter lists", subtitle: "EasyList, EasyPrivacy and EasyList Cookie, updated each week") {
+                Text(model.filterListsUpdated?.formatted(date: .abbreviated, time: .shortened) ?? "Not downloaded yet")
                     .foregroundStyle(.secondary)
             }
         }
@@ -327,7 +333,8 @@ private struct AboutPane: View {
     /// Made from the menu bar (MainMenu.swift), so a new shortcut is in the list at once.
     private let shortcuts = MainMenu.shortcutList()
 
-    /// The libraries in Bosk (project.yml and Resources/Reader), with their links.
+    /// The libraries in Bosk (project.yml and Resources/Reader) and the filter lists it downloads,
+    /// with their links.
     private let libraries: [(name: String, use: String, links: [(String, String)])] = [
         ("Defuddle", "Reader mode · by Steph Ango · MIT License",
          [("Website", "https://stephango.com"), ("GitHub", "https://github.com/kepano/defuddle")]),
@@ -335,6 +342,8 @@ private struct AboutPane: View {
          [("GitHub", "https://github.com/driceroland/Search")]),
         ("Sparkle", "App updates · MIT License",
          [("Website", "https://sparkle-project.org"), ("GitHub", "https://github.com/sparkle-project/Sparkle")]),
+        ("EasyList", "Ad, tracker and cookie notice filter lists · CC BY-SA 3.0 and CC BY 3.0",
+         [("Website", "https://easylist.to")]),
     ]
 
     var body: some View {
@@ -365,7 +374,7 @@ private struct AboutPane: View {
         }
 
         VStack(alignment: .leading, spacing: 8) {
-            Text("Open-source libraries").font(.headline).padding(.leading, 4)
+            Text("Open-source libraries and lists").font(.headline).padding(.leading, 4)
             SettingsCard {
                 ForEach(libraries, id: \.name) { library in
                     SettingsRow(title: library.name, subtitle: library.use) {

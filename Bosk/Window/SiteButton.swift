@@ -121,7 +121,7 @@ private final class SitePanel: NSViewController {
     private func clearRow() -> NSView {
         // A long site name does not fit in the row. The question before the delete names the site.
         clearButton.title = "Clear Site Data…"
-        clearButton.toolTip = "Clear cookies and data for \(AdBlocker.site(for: tab.url) ?? host)"
+        clearButton.toolTip = "Clear cookies and data for \(ContentBlocker.site(for: tab.url) ?? host)"
         clearButton.image = NSImage(systemSymbolName: "externaldrive", accessibilityDescription: nil)
         Self.style(clearButton)
         clearButton.target = self
@@ -189,7 +189,7 @@ private final class SitePanel: NSViewController {
 
     /// WebKit keeps data per registrable domain ("google.com" for "mail.google.com").
     private func loadRecords() {
-        let site = AdBlocker.site(for: tab.url) ?? host
+        let site = ContentBlocker.site(for: tab.url) ?? host
         Task {
             let all = await WKWebsiteDataStore.default().dataRecords(ofTypes: WKWebsiteDataStore.allWebsiteDataTypes())
             records = all.filter { site == $0.displayName || site.hasSuffix("." + $0.displayName) }

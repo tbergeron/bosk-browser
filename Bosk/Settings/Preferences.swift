@@ -20,6 +20,8 @@ enum Preferences {
     private static let unpinnedExtensionsKey = "BoskUnpinnedExtensions"
     private static let blocksAdsKey = "BoskBlocksAds"
     private static let adsAllowedSitesKey = "BoskAdsAllowedSites"
+    private static let hidesCookieNoticesKey = "BoskHidesCookieNotices"
+    private static let cookieNoticesShownSitesKey = "BoskCookieNoticesShownSites"
 
     static var appearance: Appearance {
         get { UserDefaults.standard.string(forKey: appearanceKey).flatMap(Appearance.init) ?? .system }
@@ -83,17 +85,29 @@ enum Preferences {
         set { UserDefaults.standard.set(newValue.path, forKey: downloadFolderKey) }
     }
 
-    /// The built-in ad blocker (AdBlocker). On when the user never chose.
+    /// The built-in ad blocker (ContentBlocker.ads). On when the user never chose.
     static var blocksAds: Bool {
         get { UserDefaults.standard.object(forKey: blocksAdsKey) as? Bool ?? true }
         set { UserDefaults.standard.set(newValue, forKey: blocksAdsKey) }
     }
 
-    /// Sites where the user allows ads (see AdBlocker.site(for:)). `Defaults.adsAllowedSites`
+    /// Sites where the user allows ads (see ContentBlocker.site(for:)). `Defaults.adsAllowedSites`
     /// until the user changes the per-site switch.
     static var adsAllowedSites: Set<String> {
         get { UserDefaults.standard.stringArray(forKey: adsAllowedSitesKey).map(Set.init) ?? Defaults.adsAllowedSites }
         set { UserDefaults.standard.set(newValue.sorted(), forKey: adsAllowedSitesKey) }
+    }
+
+    /// The built-in cookie notice blocker (ContentBlocker.cookies). On when the user never chose.
+    static var hidesCookieNotices: Bool {
+        get { UserDefaults.standard.object(forKey: hidesCookieNoticesKey) as? Bool ?? true }
+        set { UserDefaults.standard.set(newValue, forKey: hidesCookieNoticesKey) }
+    }
+
+    /// Sites where the user shows cookie notices (see ContentBlocker.site(for:)).
+    static var cookieNoticesShownSites: Set<String> {
+        get { Set(UserDefaults.standard.stringArray(forKey: cookieNoticesShownSitesKey) ?? []) }
+        set { UserDefaults.standard.set(newValue.sorted(), forKey: cookieNoticesShownSitesKey) }
     }
 
     static var asksWhereToSave: Bool {

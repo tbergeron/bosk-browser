@@ -40,8 +40,10 @@ enum Defaults {
     /// The ad blocker's filter lists: ads, then trackers.
     static let adListURLs = [URL(string: "https://easylist.to/easylist/easylist.txt")!,
                              URL(string: "https://easylist.to/easylist/easyprivacy.txt")!]
-    /// The ad blocker downloads its lists again after this time.
-    static let adListUpdateInterval: TimeInterval = 7 * 24 * 60 * 60
+    /// The cookie notice blocker's filter list (EasyList Cookie, CC BY 3.0).
+    static let cookieListURLs = [URL(string: "https://secure.fanboy.co.nz/fanboy-cookiemonster.txt")!]
+    /// The content blockers download their lists again after this time.
+    static let filterListUpdateInterval: TimeInterval = 7 * 24 * 60 * 60
     /// Sites where the ad blocker is off until the user changes the per-site switch.
     /// EasyPrivacy breaks the Apple Account sign-in form on appleid.apple.com.
     static let adsAllowedSites: Set<String> = ["appleid.apple.com"]

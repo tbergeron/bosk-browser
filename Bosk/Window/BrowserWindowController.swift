@@ -313,12 +313,25 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate {
     /// From the shield menu in the top bar. The page reloads when the change is on the tabs.
     @objc func toggleAdBlocker(_ sender: Any?) {
         let tab = store.selectedTab
-        AdBlocker.shared.setOn(!Preferences.blocksAds) { [weak tab] in tab?.webView?.reload() }
+        ContentBlocker.ads.setOn(!Preferences.blocksAds) { [weak tab] in tab?.webView?.reload() }
     }
 
     @objc func toggleAdsOnSite(_ sender: Any?) {
-        guard let tab = store.selectedTab, let site = AdBlocker.site(for: tab.url) else { return }
-        AdBlocker.shared.setAllowsAds(!AdBlocker.shared.allowsAds(on: site), on: site) { [weak tab] in
+        toggleOnSite(ContentBlocker.ads)
+    }
+
+    @objc func toggleCookieNotices(_ sender: Any?) {
+        let tab = store.selectedTab
+        ContentBlocker.cookies.setOn(!Preferences.hidesCookieNotices) { [weak tab] in tab?.webView?.reload() }
+    }
+
+    @objc func toggleCookieNoticesOnSite(_ sender: Any?) {
+        toggleOnSite(ContentBlocker.cookies)
+    }
+
+    private func toggleOnSite(_ blocker: ContentBlocker) {
+        guard let tab = store.selectedTab, let site = ContentBlocker.site(for: tab.url) else { return }
+        blocker.setAllowed(!blocker.isAllowed(on: site), on: site) { [weak tab] in
             tab?.webView?.reload()
         }
     }
@@ -399,8 +412,8 @@ extension BrowserWindowController: NSMenuItemValidation {
             return true
         }
         if menuItem.action == #selector(toggleAdsOnSite(_:)) {
-            let site = AdBlocker.site(for: store.selectedTab?.url)
-            menuItem.title = site.map(AdBlocker.shared.allowsAds) == true ? "Block Ads on This Site" : "Allow Ads on This Site"
+            let site = ContentBlocker.site(for: store.selectedTab?.url)
+            menuItem.title = site.map(ContentBlocker.ads.isAllowed) == true ? "Block Ads on This Site" : "Allow Ads on This Site"
             return Preferences.blocksAds && site != nil
         }
         guard menuItem.action == #selector(bookmarkPage(_:)) else { return true }

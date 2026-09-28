@@ -1,20 +1,28 @@
 import BoskCore
 import WebKit
 
-/// The built-in ad blocker. It downloads EasyList and EasyPrivacy, converts them to WebKit rules
+/// A built-in blocker from filter lists: the ad blocker (EasyList and EasyPrivacy) and the cookie
+/// notice blocker (EasyList Cookie). Each one downloads its lists, converts them to WebKit rules
 /// (ContentBlockerConverter) and adds the compiled list to the user content controller of all tabs.
 /// On a site the user allows, each page load turns the list off with private WebKit API, so the
 /// per-site switch needs no compile. Without that API, a site the user allows is a rule at the
 /// end of the list, and a change to the allowed sites compiles the list again (a few seconds).
 @MainActor
-final class AdBlocker {
-    static let shared = AdBlocker()
+final class ContentBlocker {
+    enum Kind {
+        case ads, cookies
+    }
 
-    private let directory = Defaults.dataDirectory.appending(path: "AdBlocker", directoryHint: .isDirectory)
+    static let ads = ContentBlocker(.ads)
+    static let cookies = ContentBlocker(.cookies)
+    private static let all = [ads, cookies]
+
+    let kind: Kind
+    private let directory: URL
     /// The converted lists, without the allowed sites. A new download replaces it.
     private var rulesFile: URL { directory.appending(path: "rules.json") }
     private lazy var store = WKContentRuleListStore(url: directory.appending(path: "Compiled", directoryHint: .isDirectory))!
-    private let identifier = "Ads"
+    private let identifier: String
     /// The list on the tabs now. nil when the blocker is off or has no list yet.
     private var activeList: WKContentRuleList?
     private var isBuilding = false
@@ -23,6 +31,56 @@ final class AdBlocker {
     private var pendingReloads: [() -> Void] = []
     private var observers: [ObjectIdentifier: () -> Void] = [:]
 
+    private init(_ kind: Kind) {
+        self.kind = kind
+        switch kind {
+        case .ads:
+            identifier = "Ads"
+            // The name from before the cookie notice blocker, so the saved list stays in use.
+            directory = Defaults.dataDirectory.appending(path: "AdBlocker", directoryHint: .isDirectory)
+        case .cookies:
+            identifier = "CookieNotices"
+            directory = Defaults.dataDirectory.appending(path: "CookieNotices", directoryHint: .isDirectory)
+        }
+    }
+
+    private var listURLs: [URL] {
+        switch kind {
+        case .ads: Defaults.adListURLs
+        case .cookies: Defaults.cookieListURLs
+        }
+    }
+
+    var isOn: Bool {
+        get {
+            switch kind {
+            case .ads: Preferences.blocksAds
+            case .cookies: Preferences.hidesCookieNotices
+            }
+        }
+        set {
+            switch kind {
+            case .ads: Preferences.blocksAds = newValue
+            case .cookies: Preferences.hidesCookieNotices = newValue
+            }
+        }
+    }
+
+    private var allowedSites: Set<String> {
+        get {
+            switch kind {
+            case .ads: Preferences.adsAllowedSites
+            case .cookies: Preferences.cookieNoticesShownSites
+            }
+        }
+        set {
+            switch kind {
+            case .ads: Preferences.adsAllowedSites = newValue
+            case .cookies: Preferences.cookieNoticesShownSites = newValue
+            }
+        }
+    }
+
     /// When the lists were last downloaded. nil before the first download.
     var listsUpdated: Date? {
         (try? rulesFile.resourceValues(forKeys: [.contentModificationDateKey]))?.contentModificationDate
@@ -30,9 +88,9 @@ final class AdBlocker {
 
     func start() {
         load()
-        let timer = Timer(timeInterval: 24 * 60 * 60, repeats: true) { _ in
+        let timer = Timer(timeInterval: 24 * 60 * 60, repeats: true) { [self] _ in
             MainActor.assumeIsolated {
-                if Preferences.blocksAds && AdBlocker.shared.listsAreOld { AdBlocker.shared.build() }
+                if isOn && listsAreOld { build() }
             }
         }
         timer.tolerance = 60 * 60
@@ -41,7 +99,7 @@ final class AdBlocker {
 
     /// - Parameter reload: Runs when the change is on the tabs, to show the page with the change.
     func setOn(_ on: Bool, reload: (() -> Void)? = nil) {
-        Preferences.blocksAds = on
+        isOn = on
         if let reload { pendingReloads.append(reload) }
         if on {
             load()
@@ -70,20 +128,21 @@ final class AdBlocker {
         return host
     }
 
-    /// Also true on a subdomain of an allowed site, because the allow rule covers subdomains.
-    func allowsAds(on site: String) -> Bool {
-        Preferences.adsAllowedSites.contains { site == $0 || site.hasSuffix("." + $0) }
+    /// True when the user turned this blocker off on the site. Also true on a subdomain of an
+    /// allowed site, because the allow rule covers subdomains.
+    func isAllowed(on site: String) -> Bool {
+        allowedSites.contains { site == $0 || site.hasSuffix("." + $0) }
     }
 
     /// - Parameter reload: Runs when the new list is on the tabs, to show the page with the change.
-    func setAllowsAds(_ allowed: Bool, on site: String, reload: @escaping () -> Void) {
-        var sites = Preferences.adsAllowedSites
+    func setAllowed(_ allowed: Bool, on site: String, reload: @escaping () -> Void) {
+        var sites = allowedSites
         if allowed {
             sites.insert(site)
         } else {
             sites = sites.filter { !(site == $0 || site.hasSuffix("." + $0)) }
         }
-        Preferences.adsAllowedSites = sites
+        allowedSites = sites
         if Self.setRuleListsEnabled != nil {
             reload()
         } else {
@@ -106,35 +165,36 @@ final class AdBlocker {
         return unsafeBitCast(method_getImplementation(method), to: SetRuleListsEnabled.self)
     }()
 
-    /// For a page load in a main frame: turns this list off (and only this list, not the lists
-    /// of extensions) when the user allows ads on the page's site.
-    func configure(_ preferences: WKWebpagePreferences, for url: URL?) {
-        guard let setRuleListsEnabled = Self.setRuleListsEnabled, Preferences.blocksAds,
-              let site = Self.site(for: url), allowsAds(on: site) else { return }
+    /// For a page load in a main frame: turns off the lists of the blockers that the user turned
+    /// off on the page's site (and only those, not the lists of extensions). One call for all
+    /// blockers, because each call replaces the exceptions of the call before it.
+    static func configure(_ preferences: WKWebpagePreferences, for url: URL?) {
+        guard let setRuleListsEnabled, let site = site(for: url) else { return }
+        let exceptions = all.filter { $0.isOn && $0.isAllowed(on: site) }.map(\.identifier)
+        guard !exceptions.isEmpty else { return }
         // All lists on, except the ones named in the exceptions.
-        setRuleListsEnabled(preferences, Self.setRuleListsSelector, true, NSSet(object: identifier))
+        setRuleListsEnabled(preferences, setRuleListsSelector, true, NSSet(array: exceptions))
     }
 
     // MARK: Rule list
 
     /// Puts the saved list on the tabs at once, then builds a new list when there is none or it is old.
     private func load() {
-        guard Preferences.blocksAds else { return }
-        store.lookUpContentRuleList(forIdentifier: identifier) { list, _ in
+        guard isOn else { return }
+        store.lookUpContentRuleList(forIdentifier: identifier) { [self] list, _ in
             MainActor.assumeIsolated {
-                let blocker = AdBlocker.shared
-                guard Preferences.blocksAds else { return }
-                if let list, blocker.activeList == nil {
-                    blocker.apply(list)
-                    blocker.runPendingReloads()
+                guard isOn else { return }
+                if let list, activeList == nil {
+                    apply(list)
+                    runPendingReloads()
                 }
-                if list == nil || blocker.listsAreOld { blocker.build() }
+                if list == nil || listsAreOld { build() }
             }
         }
     }
 
     private var listsAreOld: Bool {
-        listsUpdated.map { Date().timeIntervalSince($0) > Defaults.adListUpdateInterval } ?? true
+        listsUpdated.map { Date().timeIntervalSince($0) > Defaults.filterListUpdateInterval } ?? true
     }
 
     /// One build at a time. A request during a build makes one more build after it.
@@ -148,7 +208,7 @@ final class AdBlocker {
                 do {
                     try await buildOnce()
                 } catch {
-                    NSLog("Bosk: ad blocker list did not build: %@", "\(error)")
+                    NSLog("Bosk: %@ list did not build: %@", identifier, "\(error)")
                     pendingReloads.removeAll()
                 }
             }
@@ -162,7 +222,7 @@ final class AdBlocker {
             changed()
         }
         let rulesFile = rulesFile
-        let sites = Self.setRuleListsEnabled == nil ? Array(Preferences.adsAllowedSites) : []
+        let sites = Self.setRuleListsEnabled == nil ? Array(allowedSites) : []
         let json = try await Task.detached(priority: .utility) {
             let rules = try String(contentsOf: rulesFile, encoding: .utf8)
             let allow = try ContentBlockerConverter.json(ContentBlockerConverter.allowRules(forSites: sites))
@@ -172,7 +232,7 @@ final class AdBlocker {
             return rules.dropLast() + "," + allow.dropFirst()
         }.value
         guard let list = try await store.compileContentRuleList(forIdentifier: identifier, encodedContentRuleList: json),
-              Preferences.blocksAds else { return }
+              isOn else { return }
         apply(list)
         runPendingReloads()
     }
@@ -188,7 +248,7 @@ final class AdBlocker {
     private func downloadLists() async throws {
         let session = URLSession(configuration: .ephemeral)
         var lists: [String] = []
-        for url in Defaults.adListURLs {
+        for url in listURLs {
             let (data, response) = try await session.data(from: url)
             let text = String(decoding: data, as: UTF8.self)
             // An error page or a Wi-Fi sign-in page is not a list.

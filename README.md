@@ -10,6 +10,7 @@ A small, fast, opinionated web browser for macOS, built on WebKit.
 - Tabs you aren't using go to sleep to keep memory low. You choose the delay in Settings, or turn sleep off. Pinned tabs stay awake.
 - Chrome extensions work through WebKit's `WKWebExtension`.
 - A built-in ad and tracker blocker (EasyList and EasyPrivacy). You can turn it off in Settings, or for one site.
+- Cookie notices are hidden (EasyList Cookie). You can turn this off in Settings, or for one site.
 - Reader Mode, powered by [Defuddle](https://github.com/kepano/defuddle) by [kepano](https://github.com/kepano).
 
 Requires macOS 26 or later.
@@ -35,8 +36,9 @@ brew uninstall --zap --cask bosk
 ## Privacy
 
 Bosk has no backend and needs no account. It collects nothing about you: your history, tabs and
-settings stay on your Mac. Once a week, the ad blocker downloads its filter lists from easylist.to.
-That request sends no cookies and nothing about you.
+settings stay on your Mac. Once a week, the ad blocker downloads its filter lists from easylist.to,
+and the cookie notice blocker downloads its list from secure.fanboy.co.nz. These requests send no
+cookies and nothing about you.
 
 ## Known issues
 

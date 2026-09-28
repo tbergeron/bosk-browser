@@ -93,6 +93,9 @@ Then open http://localhost:8765 in Bosk.
 | Privacy > History > Clear | Asks first; after that, command bar suggestions show no visited sites | Not tested |
 | Privacy > Sign out of everything | Asks first; after that, a site you were signed in to asks you to sign in | Not tested |
 | Privacy > Cache > Clear | No prompt; sign-ins stay | Not tested |
+| /cookies, first launch with the cookie notice blocker on | "hidden" once the list is downloaded and compiled | Yes (2026-09-28; download and compile about 2 s; after relaunch the saved list is used, no download) |
+| Shield > Hide Cookie Notices on localhost (turn off), then /cookies and /ads | The page reloads: /cookies "NOT hidden", /ads still "blocked" | Yes (2026-09-28) |
+| Privacy > Hide cookie notices off, then reload /cookies | "NOT hidden"; the shield menu item "Hide Cookie Notices Everywhere" is off | Yes (2026-09-28; turned on again from the shield, the page reloads "hidden") |
 | Extensions > paste a store link, and a bare ID | Add turns on; Add shows the permission prompt and installs | Not tested |
 | Extensions > Open the Store | chromewebstore.google.com opens in a tab of a browser window | Not tested |
 | Extensions > … > Reload on an unpacked extension, after a change in its folder | The change takes effect; permissions stay | Not tested |

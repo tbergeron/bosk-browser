@@ -17,10 +17,15 @@ PAGES = {
       <li><a href="/form">Form (unsent text keeps the tab awake)</a></li>
       <li><a href="/media">Camera and microphone</a></li>
       <li><a href="/ads">Ad script (an ad blocker blocks it)</a></li>
+      <li><a href="/cookies">Cookie notice (the cookie notice blocker hides it)</a></li>
       <li><a href="http://no-such-host.invalid/">A page that does not exist</a></li></ul>""",
     "/ads": """<h1>Ad script</h1><p>Result: <span id="r">loading…</span></p>
       <script src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js"
         onload="r.textContent = 'NOT blocked'" onerror="r.textContent = 'blocked'"></script>""",
+    "/cookies": """<h1>Cookie notice</h1><p>Result: <span id="r">loading…</span></p>
+      <div id="cookiewarner">This site uses cookies. <button>Accept</button></div>
+      <script>addEventListener('load', () => r.textContent =
+        getComputedStyle(cookiewarner).display == 'none' ? 'hidden' : 'NOT hidden')</script>""",
     "/dialogs": """<h1>Dialogs</h1>
       <button onclick="alert('Hello from the page')">alert</button>
       <button onclick="document.getElementById('r').textContent = confirm('Continue?')">confirm</button>
