@@ -12,3 +12,7 @@ xcuserdata/
 
 # Release output
 release/
+
+# Agent instructions, kept local
+CLAUDE.md
+AGENTS.md
