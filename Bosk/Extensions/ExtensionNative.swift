@@ -180,19 +180,47 @@ final class HostPipe: @unchecked Sendable {
             let chunk = handle.availableData
             guard let self else { return }
             if chunk.isEmpty {
-                handle.readabilityHandler = nil
                 self.finish()
+                self.closePipes()
                 return
             }
             self.take(chunk)
         }
         process.terminationHandler = { [weak self] _ in self?.finish() }
-        try process.run()
+        do {
+            try process.run()
+        } catch {
+            closePipes()
+            try? input.fileHandleForReading.close()
+            try? output.fileHandleForWriting.close()
+            throw error
+        }
     }
 
     func stop() {
-        output.fileHandleForReading.readabilityHandler = nil
+        // Ended first: a write that waits on a host that does not read then fails and lets go.
         if process.isRunning { process.terminate() }
+        closePipes()
+    }
+
+    /// Its own lock, not `lock`: a write can wait on a full pipe, and `take` must still run.
+    private let writeLock = NSLock()
+    private var pipesClosed = false
+
+    /// Bosk's ends of the two pipes closed only when this object went away, and WebKit keeps
+    /// a port (and so its handlers, and this object) after it disconnects. Bitwarden connects
+    /// to its host about twice each 10 s; after about 18 hours Bosk had 4,814 pipes open, and
+    /// every file open failed with EMFILE (Bitwarden's storage first, 2026-09-28). So they are
+    /// closed here, once: at the end of the host's output, at stop, or when it cannot start.
+    private func closePipes() {
+        writeLock.lock()
+        let first = !pipesClosed
+        pipesClosed = true
+        writeLock.unlock()
+        guard first else { return }
+        output.fileHandleForReading.readabilityHandler = nil
+        try? input.fileHandleForWriting.close()
+        try? output.fileHandleForReading.close()
     }
 
     func write(_ message: Any) throws {
@@ -201,6 +229,10 @@ final class HostPipe: @unchecked Sendable {
         var length = UInt32(json.count).littleEndian
         var frame = Data(bytes: &length, count: 4)
         frame.append(json)
+        // A closed handle must not be written: Bosk crashes on an exception (AppDelegate).
+        writeLock.lock()
+        defer { writeLock.unlock() }
+        guard !pipesClosed else { throw ExtensionNative.Refused(why: "Native host has exited.") }
         try input.fileHandleForWriting.write(contentsOf: frame)
     }
 
