@@ -408,6 +408,10 @@ enum ExtensionShimAnswers {
         case "debug.error":
             NSLog("Bosk: extension %@: %@", id, first as? String ?? "?")
             return nil
+        // WebKit failed a storage call because it cannot open the extension's database.
+        case "storage.broken":
+            manager.storageFailed(id, first as? String ?? "?")
+            return nil
 
         // Bosk shows WebKit's own popup, so it does not need to know the popup page.
         case "action.popup":

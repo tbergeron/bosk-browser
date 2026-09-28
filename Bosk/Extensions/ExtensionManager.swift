@@ -252,6 +252,20 @@ final class ExtensionManager: NSObject {
     private var errorObservers: [String: NSObjectProtocol] = [:]
     /// Recent failed native messages, by extension and host (see ExtensionBridge).
     var nativeFailures: [String: [Date]] = [:]
+    /// WebKit's message, by extension, when it cannot open the extension's storage database.
+    /// Seen 2026-09-28 with Bitwarden: Bosk had run out of file descriptors (leaked native host
+    /// pipes, see HostPipe.closePipes), WebKit reset (emptied) the database, and the popup only
+    /// spun. Only a new Bosk process helps then, so the user is told to quit Bosk.
+    private(set) var storageFailures: [String: String] = [:]
+
+    /// Records that an extension's storage cannot be opened, once per load, so its button
+    /// and its row in Settings can say so.
+    func storageFailed(_ id: String, _ message: String) {
+        guard contexts[id] != nil, storageFailures[id] == nil else { return }
+        NSLog("Bosk: storage of extension %@ cannot be opened: %@", id, message)
+        storageFailures[id] = message
+        changed()
+    }
 
     /// Unloads and loads an extension whose worker does not start again, as a relaunch would.
     /// At most once a minute, so an extension that can never start does not loop.
@@ -399,6 +413,7 @@ final class ExtensionManager: NSObject {
         guard let context = contexts.removeValue(forKey: id) else { return }
         workerPorts[id] = nil
         workerPings[id] = nil
+        storageFailures[id] = nil
         ExtensionShimAnswers.forget(id)
         if let observer = errorObservers.removeValue(forKey: id) { NotificationCenter.default.removeObserver(observer) }
         try? controller.unload(context)

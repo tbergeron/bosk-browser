@@ -77,9 +77,14 @@ final class ExtensionActionsView: NSView {
             ?? context.webExtension.icon(for: NSSize(width: 16, height: 16))
             ?? NSImage(systemSymbolName: "puzzlepiece.extension", accessibilityDescription: nil)
         button.toolTip = action?.label ?? context.webExtension.displayName
-        button.setAccessibilityLabel(button.toolTip)
         button.isEnabled = action?.isEnabled ?? true
         (button as? BadgeButton)?.badge = action?.badgeText ?? ""
+        // Its popup only spins then, so the button says why.
+        if ExtensionManager.shared.storageFailures[context.uniqueIdentifier] != nil {
+            button.toolTip = (button.toolTip ?? "") + ": its storage cannot be opened. Quit Bosk and open it again."
+            (button as? BadgeButton)?.badge = "!"
+        }
+        button.setAccessibilityLabel(button.toolTip)
     }
 
     /// Rows change in place: a new view under the mouse loses the next click.

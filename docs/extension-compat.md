@@ -75,6 +75,19 @@ extensions.** A per-extension memory display in Settings would help users choose
   only way out of this state.
 - `persistent: true` is refused in manifest version 3 (`WebExtension.cpp`), so a background
   page cannot be made persistent for a Chrome extension.
+- WebKit fails every storage call of an extension when it cannot open the extension's storage
+  database. Seen 2026-09-28 in the installed Bosk (0.15.6, running for about 18 hours): Bosk had
+  4,814 pipes open, and each new file open failed with EMFILE (`fs_usage`). The pipes came from
+  `HostPipe` in `ExtensionNative.swift`: Bitwarden connects to its native host about twice each
+  10 s, and Bosk's pipe ends closed only when the `HostPipe` went away, which it did not (WebKit
+  keeps a disconnected port and its handlers). Now `HostPipe` closes them itself; with the fix,
+  23 connects in 2 minutes left no pipe open (before: 44 pipes). WebKit's log said "No such
+  process" (ESRCH) for the failed opens, which was wrong: `fs_usage` showed EMFILE. WebKit then
+  read schema version 0, reset the database (Bitwarden's saved login was lost), and failed each
+  call with "Failed to open extension storage database". The popup only showed a spinner. So
+  that such a failure is never silent again, the shim tells Bosk on the first one, and the
+  extension's button shows "!" and says to quit Bosk and open it again. Tested with the Debug
+  build and the extension's storage folder made unreadable: there WebKit failed only the writes.
 
 ## The shim (ported from Search)
 

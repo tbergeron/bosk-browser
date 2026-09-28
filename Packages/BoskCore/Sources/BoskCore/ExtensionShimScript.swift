@@ -1191,6 +1191,40 @@ extension ExtensionShim {
         put(event, "hasListener", (listener) => has(wrapped.get(listener) || listener));
         return { fire: (changes, areaName) => { for (const listener of [...wrapped.keys()]) { try { listener(changes, areaName); } catch (e) { setTimeout(() => { throw e; }); } } } };
       };
+      // (Bosk's own.) When WebKit cannot open an extension's storage database,
+      // it fails every storage call, and a popup that waits for its state (Bitwarden)
+      // shows only a spinner. The browser is told once, so the user sees why.
+      // Content scripts cannot send native messages, so only pages and the worker tell.
+      if (!inContent && chrome.storage) {
+        let told = false;
+        const reportBroken = (error) => {
+          const text = String((error && error.message) || error || "");
+          if (told || !text.includes("Failed to open extension storage database")) return;
+          told = true;
+          try { native("storage.broken", [text]).catch(() => {}); } catch (e) {}
+        };
+        // Reads and writes both: with the folder unreadable, WebKit failed only the writes.
+        for (const area of ["local", "sync", "session"]) {
+          const store = chrome.storage[area];
+          if (!store) continue;
+          for (const name of ["get", "set", "remove", "clear"]) {
+            if (typeof store[name] !== "function") continue;
+            const fn = store[name].bind(store);
+            put(store, name, (...args) => {
+              if (typeof args[args.length - 1] === "function") {
+                const callback = args.pop();
+                return fn(...args, (result) => {
+                  try { if (chrome.runtime.lastError) reportBroken(chrome.runtime.lastError); } catch (e) {}
+                  callback(result);
+                });
+              }
+              const result = fn(...args);
+              Promise.resolve(result).catch(reportBroken);
+              return result;
+            });
+          }
+        }
+      }
       const global = !inContent && !worker && chrome.storage ? tracked(chrome.storage.onChanged, (areaName) => areaName) : null;
       for (const area of ["local", "sync", "session"]) {
         const store = chrome.storage && chrome.storage[area];

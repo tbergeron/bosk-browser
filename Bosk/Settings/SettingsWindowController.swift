@@ -86,7 +86,8 @@ final class SettingsModel {
                                 name: webExtension?.displayName ?? record.fileName,
                                 icon: webExtension?.icon(for: CGSize(width: 32, height: 32)),
                                 details: details.joined(separator: " · "),
-                                warnings: webExtension?.errors.map(\.localizedDescription) ?? [],
+                                warnings: (webExtension?.errors.map(\.localizedDescription) ?? [])
+                                    + (ExtensionManager.shared.storageFailures[record.id].map { [$0] } ?? []),
                                 canReload: record.sourcePath != nil,
                                 enabled: record.enabled)
         }
