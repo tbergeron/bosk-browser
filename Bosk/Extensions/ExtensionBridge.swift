@@ -6,10 +6,10 @@ import WebKit
 // A sleeping tab has no web view; WebKit still gets its URL and title.
 
 extension ExtensionManager: WKWebExtensionControllerDelegate {
+    /// The front normal window. Extensions do not see private windows.
     var focusedWindowController: BrowserWindowController? {
-        (NSApp.keyWindow?.windowController as? BrowserWindowController)
-            ?? (NSApp.mainWindow?.windowController as? BrowserWindowController)
-            ?? windowsProvider?().first
+        [NSApp.keyWindow, NSApp.mainWindow].lazy.compactMap { $0?.windowController as? BrowserWindowController }
+            .first { !$0.store.isPrivate } ?? windowsProvider?().first
     }
 
     func webExtensionController(_ controller: WKWebExtensionController,
@@ -238,7 +238,7 @@ extension BrowserWindowController: WKWebExtensionWindow {
         return .normal
     }
 
-    func isPrivate(for context: WKWebExtensionContext) -> Bool { false }
+    func isPrivate(for context: WKWebExtensionContext) -> Bool { store.isPrivate }
     func frame(for context: WKWebExtensionContext) -> CGRect { window?.frame ?? .null }
     func screenFrame(for context: WKWebExtensionContext) -> CGRect { window?.screen?.frame ?? .null }
 

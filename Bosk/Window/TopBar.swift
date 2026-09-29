@@ -165,7 +165,7 @@ extension TopBar: NSMenuDelegate {
         menu.removeAllItems()
         guard let url = tab?.url else { return }
         menu.addItem(ClosureMenuItem("Copy Address") { [weak self] in self?.tab?.copyAddress() })
-        if ["http", "https"].contains(url.scheme ?? "") {
+        if ["http", "https"].contains(url.scheme ?? ""), tab?.isPrivate == false {
             // Same action as Bookmarks > Bookmark This Page: it asks before it removes.
             let title = BookmarkStore.shared.bookmark(for: url) == nil ? "Add to Bookmarks" : "Remove Bookmark"
             menu.addItem(ClosureMenuItem(title) {

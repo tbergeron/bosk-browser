@@ -1,10 +1,15 @@
 import AppKit
 import BoskCore
+import WebKit
 
 @main
 @MainActor
 final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
     private var windowControllers: [BrowserWindowController] = []
+    /// The data store of all private windows: cookies and site data in memory only.
+    /// Made for the first private window; nil when the last one closes, so its data is gone.
+    private var privateStore: WKWebsiteDataStore?
+    private var normalWindowControllers: [BrowserWindowController] { windowControllers.filter { !$0.store.isPrivate } }
 
     static func main() {
         // AppKit catches an exception in the run loop and continues. Inside a Swift task that
@@ -25,12 +30,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
         ContentBlocker.cookies.start()
         Preferences.applyAppearance()
         Updater.start()
+        // Private windows are not saved: they do not come back after a quit.
         SessionStore.shared.snapshotProvider = { [weak self] in
-            Session(windows: self?.windowControllers.map(\.windowState) ?? [],
+            Session(windows: self?.normalWindowControllers.map(\.windowState) ?? [],
                     pinned: PinnedStore.shared.entries)
         }
         restoreSession()
-        ExtensionManager.shared.windowsProvider = { [weak self] in self?.windowControllers ?? [] }
+        ExtensionManager.shared.windowsProvider = { [weak self] in self?.normalWindowControllers ?? [] }
         // Runs when the first window frame is committed. Extensions load after it,
         // so they never slow the launch.
         CATransaction.setCompletionBlock {
@@ -87,20 +93,23 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
         return true
     }
 
-    /// Links from other apps open in a new tab in the front window.
+    /// Links from other apps open in a new tab in the front normal window, never in a private window.
     func application(_ application: NSApplication, open urls: [URL]) {
-        let controller = (NSApp.mainWindow?.windowController as? BrowserWindowController)
-            ?? windowControllers.last ?? openWindow(showCommandBar: false)
+        let front = NSApp.mainWindow?.windowController as? BrowserWindowController
+        let controller = front.flatMap { $0.store.isPrivate ? nil : $0 }
+            ?? normalWindowControllers.last ?? openWindow(showCommandBar: false)
         for url in urls { controller.store.newTab(url: url) }
         controller.window?.makeKeyAndOrderFront(nil)
     }
 
+    /// - Parameter isPrivate: A private window: its tabs keep nothing after the last private window closes.
     @discardableResult
-    func openWindow(showCommandBar: Bool = true, frame: NSRect? = nil) -> BrowserWindowController {
-        let controller = BrowserWindowController()
+    func openWindow(showCommandBar: Bool = true, frame: NSRect? = nil, isPrivate: Bool = false) -> BrowserWindowController {
+        if isPrivate, privateStore == nil { privateStore = .nonPersistent() }
+        let controller = BrowserWindowController(privateStore: isPrivate ? privateStore : nil)
         if let frame { controller.window?.setFrame(frame, display: false) }
         windowControllers.append(controller)
-        ExtensionManager.shared.controller.didOpenWindow(controller)
+        if !isPrivate { ExtensionManager.shared.controller.didOpenWindow(controller) }
         controller.showWindow(nil)
         NSApp.activate()
         if showCommandBar { controller.showCommandBar(target: .newTab) }
@@ -118,14 +127,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
         } else {
             frame = frame.offsetBy(dx: 24, dy: -24)
         }
-        let controller = openWindow(showCommandBar: false, frame: frame)
+        let controller = openWindow(showCommandBar: false, frame: frame, isPrivate: store.isPrivate)
         store.transfer(tab, to: controller.store)
     }
 
     /// Moves a tab group, with its pages, to a new window down and to the right of `store`'s window.
     func moveGroupToNewWindow(_ id: UUID, from store: TabStore) {
         guard let frame = store.window?.frame else { return }
-        let controller = openWindow(showCommandBar: false, frame: frame.offsetBy(dx: 24, dy: -24))
+        let controller = openWindow(showCommandBar: false, frame: frame.offsetBy(dx: 24, dy: -24), isPrivate: store.isPrivate)
         store.transferGroup(id, to: controller.store)
     }
 
@@ -134,6 +143,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
         guard !isTerminating else { return }
         windowControllers.removeAll { $0 === controller }
         SessionStore.shared.setNeedsSave()
+        if controller.store.isPrivate, !windowControllers.contains(where: { $0.store.isPrivate }) { endPrivateSession() }
+    }
+
+    /// The last private window closed. Forget all that the private windows kept in memory,
+    /// so the next private window starts empty, as in other browsers.
+    private func endPrivateSession() {
+        privateStore = nil
+        ContentBlocker.endPrivateSession()
+        PermissionMemory.privateWindows.forgetAll()
+        ReaderMode.privateArticles.removeAll()
     }
 
     private var isTerminating = false
@@ -154,6 +173,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
 
     var allTabs: [Tab] { windowControllers.flatMap(\.store.allTabs) }
 
+    /// The tabs of the windows of the same type (private or normal) as `store`, for Switch to Tab:
+    /// a private window does not show normal tabs, and a normal window does not show private tabs.
+    func allTabs(like store: TabStore) -> [Tab] {
+        windowControllers.filter { $0.store.isPrivate == store.isPrivate }.flatMap(\.store.allTabs)
+    }
+
     /// Selects a tab in whatever window has it, and brings that window to the front.
     func showTab(id: UUID) {
         for controller in windowControllers {
@@ -167,6 +192,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
     // MARK: Menu actions when no browser window is in front
 
     @objc func newWindow(_ sender: Any?) { openWindow() }
+    @objc func newPrivateWindow(_ sender: Any?) { openWindow(isPrivate: true) }
     /// Cmd+W in a window that has no tabs (Settings, About) closes that window.
     @objc func closeTab(_ sender: Any?) {
         guard let window = NSApp.keyWindow, window.styleMask.contains(.closable) else { return }

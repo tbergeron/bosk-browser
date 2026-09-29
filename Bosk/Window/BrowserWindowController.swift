@@ -7,7 +7,7 @@ import WebKit
 /// so the sidebar owns the space next to the window buttons.
 @MainActor
 final class BrowserWindowController: NSWindowController, NSWindowDelegate {
-    let store = TabStore()
+    let store: TabStore
     private let topBar = TopBar()
     private let container = WebContainerView()
     private let findBar = FindBar()
@@ -21,7 +21,9 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate {
     /// "New Tab in Group": the group of the tab the open command bar makes.
     private var newTabGroupID: UUID?
 
-    init(restoring state: WindowState? = nil) {
+    /// - Parameter privateStore: The data store of the private windows, for a private window.
+    init(restoring state: WindowState? = nil, privateStore: WKWebsiteDataStore? = nil) {
+        store = TabStore(privateStore: privateStore)
         sidebar = SidebarView(store: store)
         rootView = RootView(sidebar: sidebar, topBar: topBar, container: container, findBar: findBar)
         let window = BoskWindow(
@@ -33,7 +35,7 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate {
         window.titleVisibility = .hidden
         window.titlebarAppearsTransparent = true
         // Until a tab is on screen. See tabStore(_:didSelect:previous:).
-        window.title = "New Tab"
+        window.title = privateStore == nil ? "New Tab" : "Private – New Tab"
         window.minSize = Defaults.minimumWindowSize
         window.isReleasedWhenClosed = false
         window.contentView = rootView
@@ -49,7 +51,13 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate {
         store.window = window
         findBar.onClose = { [weak self] in self?.hideFindBar() }
         extensionActions.currentTab = { [weak self] in self?.store.selectedTab }
-        topBar.setAccessoryViews([UpdateButton(), addToBoskButton, siteButton, adBlockerButton, TopBarDivider(), extensionActions, DownloadsButton()])
+        if store.isPrivate {
+            // No extensions in a private window, so no extension buttons.
+            adBlockerButton.isPrivate = true
+            topBar.setAccessoryViews([PrivateBadge(), UpdateButton(), siteButton, adBlockerButton, TopBarDivider(), DownloadsButton()])
+        } else {
+            topBar.setAccessoryViews([UpdateButton(), addToBoskButton, siteButton, adBlockerButton, TopBarDivider(), extensionActions, DownloadsButton()])
+        }
         ExtensionManager.shared.addObserver(self) { [weak self] in self?.extensionActions.reload() }
         NotificationCenter.default.addObserver(forName: PageZoom.didChangeDefault, object: nil, queue: .main) { [weak self] _ in
             MainActor.assumeIsolated {
@@ -93,21 +101,24 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate {
             SuggestionRanker.MenuCommand(title: $0.item.title, menu: $0.menu,
                                          shortcut: MainMenu.shortcut(of: $0.item), isEnabled: $0.item.isEnabled)
         }
+        let store = store
+        // A private window changes nothing on disk, so it removes no history or bookmarks.
+        let onRemove: ((SuggestionRanker.Suggestion) async -> Void)? = store.isPrivate ? nil : { choice in
+            switch choice {
+            case .visit(_, let url, _): await HistoryStore.shared.remove(url: url)
+            case .bookmark(let id, _, _): BookmarkStore.shared.remove(id: id)
+            case .typed, .openTab, .history, .command: break
+            }
+        }
         commandBar.present(over: window, text: text, target: target, mode: mode, provider: { text in
-            await Self.rows(for: text, mode: mode, commands: commands)
+            await Self.rows(for: text, mode: mode, commands: commands, store: store)
         }, onChoose: { [weak self] choice, target in
             if case .command(let index, _, _, _, _) = choice {
                 self?.run(menuItems[index].item)
             } else {
                 self?.choose(choice, target: target)
             }
-        }, onRemove: { choice in
-            switch choice {
-            case .visit(_, let url, _): await HistoryStore.shared.remove(url: url)
-            case .bookmark(let id, _, _): BookmarkStore.shared.remove(id: id)
-            case .typed, .openTab, .history, .command: break
-            }
-        })
+        }, onRemove: onRemove)
     }
 
     /// Runs a menu bar item as the menu would: its own target (a bookmark, a window in the
@@ -119,14 +130,16 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate {
         NSApp.sendAction(action, to: item.target, from: item)
     }
 
+    /// - Parameter store: The tabs of this window. A private window shows no history
+    ///   and only the tabs of private windows.
     private static func rows(for text: String, mode: CommandBarPanel.Mode,
-                             commands: [SuggestionRanker.MenuCommand]) async -> [CommandBarPanel.Row] {
-        let openTabs = (NSApp.delegate as? AppDelegate)?.allTabs.map {
+                             commands: [SuggestionRanker.MenuCommand], store: TabStore) async -> [CommandBarPanel.Row] {
+        let openTabs = (NSApp.delegate as? AppDelegate)?.allTabs(like: store).map {
             SuggestionRanker.OpenTab(id: $0.id, url: $0.url, title: $0.title)
         } ?? []
         switch mode {
         case .open:
-            let history = await HistoryStore.shared.candidates(for: text)
+            let history = store.isPrivate ? [] : await HistoryStore.shared.candidates(for: text)
             return SuggestionRanker.suggestions(for: text, openTabs: openTabs, history: history,
                                                 bookmarks: BookmarkStore.shared.entries,
                                                 now: Date(), searchURL: Defaults.searchURL).map { .item($0) }
@@ -135,6 +148,7 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate {
         case .bookmarks:
             return section("Bookmarks", SuggestionRanker.bookmarkRows(for: text, bookmarks: BookmarkStore.shared.entries))
         case .history:
+            guard !store.isPrivate else { return [] }
             let visits = SuggestionRanker.historyRows(for: text, history: await HistoryStore.shared.visits(for: text))
             // One header for each day ("Today", "Yesterday", …). The rows are newest first.
             let now = Date()
@@ -289,7 +303,8 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate {
     /// Bookmarks the page, or removes its bookmark if it has one. Removing asks first:
     /// nothing is deleted without a question.
     @objc func bookmarkPage(_ sender: Any?) {
-        guard let tab = store.selectedTab, let url = tab.url else { return }
+        // A private window changes nothing on disk.
+        guard !store.isPrivate, let tab = store.selectedTab, let url = tab.url else { return }
         if let bookmark = BookmarkStore.shared.bookmark(for: url) {
             let name = bookmark.title.isEmpty ? url.absoluteString : bookmark.title
             guard confirm("Remove this bookmark?", "Bosk removes “\(name)” from Bookmarks.",
@@ -331,7 +346,8 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate {
 
     private func toggleOnSite(_ blocker: ContentBlocker) {
         guard let tab = store.selectedTab, let site = ContentBlocker.site(for: tab.url) else { return }
-        blocker.setAllowed(!blocker.isAllowed(on: site), on: site) { [weak tab] in
+        let isPrivate = store.isPrivate
+        blocker.setAllowed(!blocker.isAllowed(on: site, isPrivate: isPrivate), on: site, isPrivate: isPrivate) { [weak tab] in
             tab?.webView?.reload()
         }
     }
@@ -351,7 +367,9 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate {
     }
 
     func windowDidMove(_ notification: Notification) { SessionStore.shared.setNeedsSave() }
-    func windowDidBecomeKey(_ notification: Notification) { ExtensionManager.shared.controller.didFocusWindow(self) }
+    func windowDidBecomeKey(_ notification: Notification) {
+        if !store.isPrivate { ExtensionManager.shared.controller.didFocusWindow(self) }
+    }
     func windowDidEndLiveResize(_ notification: Notification) { SessionStore.shared.setNeedsSave() }
 
     /// Close Window, Cmd+Shift+W and the close button ask first when the window has tabs:
@@ -380,7 +398,7 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate {
             ExtensionManager.shared.didClose(tab, windowIsClosing: true)
             tab.close()
         }
-        ExtensionManager.shared.controller.didCloseWindow(self)
+        if !store.isPrivate { ExtensionManager.shared.controller.didCloseWindow(self) }
         (NSApp.delegate as? AppDelegate)?.windowControllerDidClose(self)
     }
 }
@@ -413,10 +431,19 @@ extension BrowserWindowController: NSMenuItemValidation {
         }
         if menuItem.action == #selector(toggleAdsOnSite(_:)) {
             let site = ContentBlocker.site(for: store.selectedTab?.url)
-            menuItem.title = site.map(ContentBlocker.ads.isAllowed) == true ? "Block Ads on This Site" : "Allow Ads on This Site"
-            return Preferences.blocksAds && site != nil
+            let isAllowed = site.map { ContentBlocker.ads.isAllowed(on: $0, isPrivate: store.isPrivate) } == true
+            menuItem.title = isAllowed ? "Block Ads on This Site" : "Allow Ads on This Site"
+            return Preferences.blocksAds && site != nil && (!store.isPrivate || ContentBlocker.canChangeSitesInPrivate)
+        }
+        // A private window has no pinned tabs, shows no history and changes no bookmarks.
+        if [#selector(togglePinTab(_:)), #selector(showHistory(_:))].contains(menuItem.action) {
+            return !store.isPrivate
         }
         guard menuItem.action == #selector(bookmarkPage(_:)) else { return true }
+        guard !store.isPrivate else {
+            menuItem.title = "Bookmark This Page"
+            return false
+        }
         guard let url = store.selectedTab?.url, ["http", "https"].contains(url.scheme ?? "") else {
             menuItem.title = "Bookmark This Page"
             return false
@@ -446,11 +473,17 @@ extension BrowserWindowController: TabStoreDelegate {
             siteButton.update(for: tab)
             adBlockerButton.update(for: tab.url)
         }
-        if change == .title || change == .url { window?.title = tab.displayTitle }
+        if change == .title || change == .url { window?.title = windowTitle(for: tab) }
         if change == .sleepState { container.show(tab.webView) }
         // Keep the page picture until the woken page has loaded.
         if change == .loading, !tab.isLoading { container.hideSnapshot() }
         topBar.update(with: tab)
+    }
+
+    /// The title is hidden, but the Window menu shows it. It names private windows.
+    private func windowTitle(for tab: Tab?) -> String {
+        let title = tab?.displayTitle ?? "New Tab"
+        return store.isPrivate ? "Private – " + title : title
     }
 
     func tabStore(_ store: TabStore, didSelect tab: Tab?, previous: Tab?) {
@@ -471,7 +504,7 @@ extension BrowserWindowController: TabStoreDelegate {
         }
         topBar.update(with: tab)
         // The title is hidden, but the Window menu lists a window only when it has a title.
-        window?.title = tab?.displayTitle ?? "New Tab"
+        window?.title = windowTitle(for: tab)
         sidebar.selectionChanged(from: previous, to: tab)
         if tab == nil { showCommandBar(target: .newTab) }
     }
@@ -649,6 +682,33 @@ private final class RootView: NSView {
         findBar.frame = NSRect(x: contentX, y: size.height - barHeight - findHeight, width: contentWidth, height: findHeight)
         container.frame = NSRect(x: contentX, y: 0, width: contentWidth, height: size.height - barHeight - findHeight)
     }
+}
+
+/// "Private" in the top bar of a private window, so the user always sees the window type.
+@MainActor
+private final class PrivateBadge: NSTextField {
+    init() {
+        super.init(frame: .zero)
+        let text = NSMutableAttributedString()
+        if let image = NSImage(systemSymbolName: "eyeglasses", accessibilityDescription: nil) {
+            let attachment = NSTextAttachment()
+            attachment.image = image
+            text.append(NSAttributedString(attachment: attachment))
+            text.append(NSAttributedString(string: " "))
+        }
+        text.append(NSAttributedString(string: "Private"))
+        attributedStringValue = text
+        font = .systemFont(ofSize: 12, weight: .medium)
+        textColor = .secondaryLabelColor
+        isEditable = false
+        isSelectable = false
+        isBordered = false
+        drawsBackground = false
+        toolTip = "Private window: Bosk keeps no history, cookies or site data after you close all private windows."
+    }
+
+    @available(*, unavailable)
+    required init?(coder: NSCoder) { fatalError("init(coder:) is not used") }
 }
 
 /// The sidebar edge: drag it to change the sidebar width.

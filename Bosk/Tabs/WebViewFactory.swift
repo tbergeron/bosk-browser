@@ -1,19 +1,28 @@
 import BoskCore
 import WebKit
 
-/// Makes every web view in Bosk. All tabs share one data store, one user content
-/// controller and (later) one extension controller, so they share cookies and scripts.
+/// Makes every web view in Bosk. Normal tabs share the default data store, one user content
+/// controller and the extension controller, so they share cookies and scripts. Private tabs
+/// share the private data store (in memory only) and their own user content controller, with no extensions.
 @MainActor
 enum WebViewFactory {
-    static let userContentController: WKUserContentController = {
+    static let userContentController: WKUserContentController = makeUserContentController(isPrivate: false)
+    /// For private tabs. WebKit puts the content scripts of extensions on the user content controller
+    /// of each web view with the extension controller, so with one shared controller they ran in private tabs too.
+    static let privateUserContentController: WKUserContentController = makeUserContentController(isPrivate: true)
+    /// Both controllers. The built-in blockers put their rule lists on each.
+    static var userContentControllers: [WKUserContentController] { [userContentController, privateUserContentController] }
+
+    private static func makeUserContentController(isPrivate: Bool) -> WKUserContentController {
         let controller = WKUserContentController()
         // A separate world, so page scripts cannot send the message and keep the tab awake.
         controller.addUserScript(WKUserScript(source: unsentInputScript, injectionTime: .atDocumentEnd,
                                               forMainFrameOnly: false, in: scriptWorld))
         controller.add(ScriptMessageRouter(), contentWorld: scriptWorld, name: unsentInputMessage)
-        WebStoreBridge.install(in: controller)
+        // Extensions are off in private windows, so the Web Store cannot install from them.
+        if !isPrivate { WebStoreBridge.install(in: controller) }
         return controller
-    }()
+    }
 
     static let unsentInputMessage = "boskUnsentInput"
     static let scriptWorld = WKContentWorld.world(name: "Bosk")
@@ -61,10 +70,11 @@ enum WebViewFactory {
         webView.flatMap { owners.object(forKey: $0) }
     }
 
-    static func makeConfiguration() -> WKWebViewConfiguration {
+    /// - Parameter privateStore: The data store of the private windows; nil for a normal tab.
+    static func makeConfiguration(privateStore: WKWebsiteDataStore? = nil) -> WKWebViewConfiguration {
         let configuration = WKWebViewConfiguration()
-        configuration.websiteDataStore = .default()
-        configuration.userContentController = userContentController
+        configuration.websiteDataStore = privateStore ?? .default()
+        configuration.userContentController = privateStore == nil ? userContentController : privateUserContentController
         configuration.applicationNameForUserAgent = Defaults.userAgentApplicationName
         configuration.setURLSchemeHandler(ReaderMode.schemeHandler, forURLScheme: ReaderPage.scheme)
         configuration.preferences.isElementFullscreenEnabled = true
@@ -74,14 +84,18 @@ enum WebViewFactory {
             configuration.preferences.setValue(true, forKey: "developerExtrasEnabled")
         }
         // Content scripts of extensions run only in web views with this controller.
-        configuration.webExtensionController = ExtensionManager.shared.controller
+        // Private tabs have none: extensions are off in private windows.
+        if privateStore == nil { configuration.webExtensionController = ExtensionManager.shared.controller }
         return configuration
     }
 
-    /// - Parameter configuration: Pass WebKit's configuration for pop-ups
-    ///   (`createWebViewWith`); nil makes a new one.
-    static func makeWebView(configuration: WKWebViewConfiguration? = nil) -> WKWebView {
-        let webView = BoskWebView(frame: .zero, configuration: configuration ?? makeConfiguration())
+    /// - Parameters:
+    ///   - configuration: Pass WebKit's configuration for pop-ups (`createWebViewWith`),
+    ///     which has the opener's data store; nil makes a new one.
+    ///   - privateStore: For a new configuration: the data store of the private windows; nil for a normal tab.
+    static func makeWebView(configuration: WKWebViewConfiguration? = nil,
+                            privateStore: WKWebsiteDataStore? = nil) -> WKWebView {
+        let webView = BoskWebView(frame: .zero, configuration: configuration ?? makeConfiguration(privateStore: privateStore))
         webView.allowsBackForwardNavigationGestures = true
         webView.allowsMagnification = true
         PageBackground.hideUntilFirstContent(in: webView)

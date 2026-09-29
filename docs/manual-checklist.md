@@ -103,3 +103,21 @@ Then open http://localhost:8765 in Bosk.
 | About > Send Feedback | A GitHub new-issue page opens with the Bosk and macOS versions in the text | Not tested |
 | About > Check now | Off in builds without a Sparkle feed ("Not set up in this build") | Yes (Debug build) |
 | Bosk > Check for Updates… | Off (gray) in builds without a Sparkle feed. About Bosk, Settings…, File > New Window and Close Tab stay on | Yes (Debug build; the item cannot be pressed, the others can) |
+
+## Private windows
+
+A test server that sets a cookie on `/set` and shows the cookies it gets on `/show` is enough for the cookie checks.
+
+| Check | Expected | Verified |
+|---|---|---|
+| ⇧⌘N, File > New Private Window, and Search Commands "private" | A window with "Private" in the top bar opens; the command bar is open | Yes (shortcut and Search Commands) |
+| Settings > About shortcut list | Has "New Private Window ⇧⌘N" | Not tested (the list is made from the menu) |
+| Open `/set` in a private window, then `/show` in a normal window | Private: the cookie; normal: no cookie | Yes |
+| Close all private windows, open a new one, open `/show` | No cookie | Yes |
+| A page in a private window, with an extension that has content scripts | The extension does not run; no extension buttons in the top bar | Yes (test extension banner) |
+| Pages from a private window in history, the command bar, or `history.sqlite` | Not there; the private command bar shows no history | Yes (`history.sqlite`) |
+| Quit with a private window open, then open Bosk | The private window does not come back; `session.json` has none of its tabs | Yes |
+| Favicons and Reader articles of private tabs | No new files in `Caches/Bosk/Favicons` or `Reader` | Favicons: yes. Reader: not tested |
+| Pin Tab, Bookmark This Page, Show All History in a private window | Off or not in the menu | Not tested |
+| Drag a tab between a private and a normal window | The drop is refused | Not tested |
+| Allow ads on a site in a private window, then close all private windows | The normal window still blocks ads on that site; a new private window blocks them again | Not tested |

@@ -64,6 +64,7 @@ final class Tab: NSObject {
     weak var store: TabStore?
 
     var isAsleep: Bool { webView == nil }
+    var isPrivate: Bool { store?.isPrivate ?? false }
     var isLoading: Bool { webView?.isLoading ?? false }
     var estimatedProgress: Double { webView?.estimatedProgress ?? 0 }
     var canGoBack: Bool { webView?.canGoBack ?? false }
@@ -104,7 +105,7 @@ final class Tab: NSObject {
     @discardableResult
     func wake(loadSavedState: Bool = true) -> WKWebView {
         if let webView { return webView }
-        let webView = WebViewFactory.makeWebView()
+        let webView = WebViewFactory.makeWebView(privateStore: store?.privateStore)
         attach(webView)
         if loadSavedState {
             if let sessionState {
@@ -171,7 +172,7 @@ final class Tab: NSObject {
                     guard let self, let title = webView.title, !title.isEmpty else { return }
                     self.title = title
                     self.notify(.title)
-                    if let url = webView.url, url != self.errorPageURL, ReaderPage.parse(url) == nil {
+                    if !self.isPrivate, let url = webView.url, url != self.errorPageURL, ReaderPage.parse(url) == nil {
                         Task { await HistoryStore.shared.updateTitle(url: url, title: title) }
                     }
                 }

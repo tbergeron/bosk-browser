@@ -1,5 +1,6 @@
 import AppKit
 import BoskCore
+import WebKit
 
 @MainActor
 protocol TabStoreDelegate: AnyObject {
@@ -34,7 +35,15 @@ final class TabStore {
 
     var allTabs: [Tab] { pinnedTabs + tabs }
 
-    init() {
+    /// The data store of the private windows, for a private window; nil for a normal window.
+    let privateStore: WKWebsiteDataStore?
+    /// A private window keeps nothing on disk, has no pinned tabs and no extensions.
+    var isPrivate: Bool { privateStore != nil }
+
+    init(privateStore: WKWebsiteDataStore? = nil) {
+        self.privateStore = privateStore
+        // Pinned tabs are saved on disk, so private windows do not show or make them.
+        guard privateStore == nil else { return }
         PinnedStore.shared.addObserver(self) { [weak self] in self?.syncPinnedTabs() }
     }
 
@@ -209,12 +218,13 @@ final class TabStore {
     }
 
     /// Moves a normal tab to `other`'s list and selects it there. The tab keeps
-    /// its web view, so the page does not reload.
+    /// its web view, so the page does not reload. Not between a private and a normal
+    /// window: a web view cannot change its data store.
     /// - Parameters:
     ///   - index: The tab's place in `other`'s list; nil puts it at the end.
     ///   - group: A group of `other` next to `index` that the tab joins.
     func transfer(_ tab: Tab, to other: TabStore, at index: Int? = nil, group: UUID? = nil) {
-        guard other !== self, let from = tabs.firstIndex(where: { $0 === tab }) else { return }
+        guard other !== self, other.isPrivate == isPrivate, let from = tabs.firstIndex(where: { $0 === tab }) else { return }
         let oldWindow = windowController
         let allIndex = pinnedTabs.count + from
         tabs.remove(at: from)
@@ -232,7 +242,7 @@ final class TabStore {
 
     /// Pins a normal tab. This window keeps the same tab (and page); other windows get a sleeping copy.
     func pin(_ tab: Tab, at index: Int? = nil) {
-        guard let from = tabs.firstIndex(where: { $0 === tab }), let url = tab.url else { return }
+        guard !isPrivate, let from = tabs.firstIndex(where: { $0 === tab }), let url = tab.url else { return }
         tabs.remove(at: from)
         tab.groupID = nil
         let entry = PinnedStore.shared.pin(url: url, title: tab.title, at: index)
@@ -259,6 +269,7 @@ final class TabStore {
 
     /// Makes `pinnedTabs` match `PinnedStore` (order, new pins, removed pins).
     func syncPinnedTabs() {
+        guard !isPrivate else { return }
         var existing = Dictionary(pinnedTabs.compactMap { tab in tab.pinnedEntryID.map { ($0, tab) } },
                                   uniquingKeysWith: { first, _ in first })
         let synced: [Tab] = PinnedStore.shared.entries.map { entry in
@@ -381,7 +392,7 @@ final class TabStore {
 
     /// Moves the group and its tabs to the end of `other`'s list. The tabs keep their web views.
     func transferGroup(_ id: UUID, to other: TabStore) {
-        guard other !== self, let group = group(id) else { return }
+        guard other !== self, other.isPrivate == isPrivate, let group = group(id) else { return }
         let members = tabs.filter { $0.groupID == id }
         let selected = members.first { $0 === selectedTab } ?? members.first
         for tab in members { transfer(tab, to: other) }

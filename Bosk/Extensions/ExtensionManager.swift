@@ -38,7 +38,7 @@ final class ExtensionManager: NSObject {
     private(set) var contexts: [String: WKWebExtensionContext] = [:]
     private var observers: [ObjectIdentifier: () -> Void] = [:]
 
-    /// All windows. AppDelegate sets it.
+    /// All normal windows (extensions are off in private windows). AppDelegate sets it.
     var windowsProvider: (() -> [BrowserWindowController])?
 
     private let directory = Defaults.dataDirectory.appending(path: "Extensions", directoryHint: .isDirectory)
@@ -474,15 +474,21 @@ final class ExtensionManager: NSObject {
     }
 
     // MARK: Tab and window events (from TabStore and the window controllers)
+    // Not for private tabs: extensions are off in private windows.
 
-    func didOpen(_ tab: Tab) { controller.didOpenTab(tab) }
+    func didOpen(_ tab: Tab) {
+        guard !tab.isPrivate else { return }
+        controller.didOpenTab(tab)
+    }
 
     func didClose(_ tab: Tab, windowIsClosing: Bool = false) {
+        guard !tab.isPrivate else { return }
         ExtensionAuth.tabClosed(tab)
         controller.didCloseTab(tab, windowIsClosing: windowIsClosing)
     }
 
     func didActivate(_ tab: Tab, previous: Tab?) {
+        guard !tab.isPrivate else { return }
         controller.didActivateTab(tab, previousActiveTab: previous)
         controller.didSelectTabs([tab])
         if let previous { controller.didDeselectTabs([previous]) }
@@ -490,10 +496,12 @@ final class ExtensionManager: NSObject {
 
     /// - Parameter oldWindow: The window the tab came from, when it moved to another window.
     func didMove(_ tab: Tab, from index: Int, in oldWindow: BrowserWindowController? = nil) {
+        guard !tab.isPrivate else { return }
         controller.didMoveTab(tab, from: index, in: oldWindow ?? tab.store?.windowController)
     }
 
     func didChange(_ properties: WKWebExtension.TabChangedProperties, for tab: Tab) {
+        guard !tab.isPrivate else { return }
         controller.didChangeTabProperties(properties, for: tab)
     }
 }

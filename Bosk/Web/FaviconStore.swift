@@ -3,7 +3,8 @@ import BoskCore
 import CryptoKit
 import WebKit
 
-/// Site icons, one per host, cached on disk as 64 px PNG files.
+/// Site icons, one per host, cached on disk as 64 px PNG files. Icons of private tabs
+/// stay in memory only.
 @MainActor
 final class FaviconStore {
     static let shared = FaviconStore()
@@ -49,7 +50,7 @@ final class FaviconStore {
               !inFlight.contains(host), !isFresh(host) else { return }
         inFlight.insert(host)
         lastRefresh[host] = Date()
-        let file = fileURL(for: host)
+        let file = tab.isPrivate ? nil : fileURL(for: host)
         // Weak: a closed or sleeping tab must not keep its web view while the icon downloads.
         Task { [weak tab, weak webView] in
             defer { inFlight.remove(host) }
@@ -81,14 +82,19 @@ final class FaviconStore {
         }
     }
 
+    /// For icons of private tabs: no cookies or cache on disk.
+    private nonisolated static let privateSession = URLSession(configuration: .ephemeral)
+
     /// Downloads, resizes and saves the icon off the main thread.
+    /// - Parameter file: Where to save the icon; nil for a private tab, which saves nothing.
     /// - Returns: The 64 px PNG data.
-    private nonisolated static func downloadPNG(_ url: URL, to file: URL) async -> Data? {
-        guard let (data, response) = try? await URLSession.shared.data(from: url),
+    private nonisolated static func downloadPNG(_ url: URL, to file: URL?) async -> Data? {
+        let session = file == nil ? privateSession : URLSession.shared
+        guard let (data, response) = try? await session.data(from: url),
               (response as? HTTPURLResponse)?.statusCode ?? 200 < 400,
               let source = NSImage(data: data), source.isValid,
               let png = source.resized(toPixels: 64)?.pngData else { return nil }
-        try? png.write(to: file, options: .atomic)
+        if let file { try? png.write(to: file, options: .atomic) }
         return png
     }
 

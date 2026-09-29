@@ -11,6 +11,8 @@ import WebKit
 enum ReaderMode {
     nonisolated static let directory = Defaults.dataDirectory.appending(path: "Reader", directoryHint: .isDirectory)
     static let schemeHandler = ReaderSchemeHandler()
+    /// The articles of private tabs: in memory only, until the last private window closes.
+    static var privateArticles: [UUID: ReaderPage.Article] = [:]
 
     private static let defuddle = Bundle.main.url(forResource: "defuddle", withExtension: "js")
         .flatMap { try? String(contentsOf: $0, encoding: .utf8) }
@@ -53,11 +55,15 @@ enum ReaderMode {
                                          published: displayDate(fields["published"] as? String ?? ""), content: content)
         let id = UUID()
         guard let url = ReaderPage.url(id: id, page: page) else { return }
-        do {
-            try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
-            try JSONEncoder().encode(article).write(to: fileURL(for: id), options: .atomic)
-        } catch {
-            return showFailure(in: webView, "Bosk cannot save the article: \(error.localizedDescription)")
+        if tab.isPrivate {
+            privateArticles[id] = article
+        } else {
+            do {
+                try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+                try JSONEncoder().encode(article).write(to: fileURL(for: id), options: .atomic)
+            } catch {
+                return showFailure(in: webView, "Bosk cannot save the article: \(error.localizedDescription)")
+            }
         }
         // The user may have gone to another page, or the tab may have slept, while Defuddle ran.
         guard tab.webView === webView, webView.url == page else { return }
@@ -122,7 +128,9 @@ final class ReaderSchemeHandler: NSObject, WKURLSchemeHandler {
             return task.didFailWithError(URLError(.badURL))
         }
         let html: String
-        if let data = try? Data(contentsOf: ReaderMode.fileURL(for: id)),
+        if let article = ReaderMode.privateArticles[id] {
+            html = ReaderPage.html(for: article, page: page, style: ReaderMode.style)
+        } else if let data = try? Data(contentsOf: ReaderMode.fileURL(for: id)),
            let article = try? JSONDecoder().decode(ReaderPage.Article.self, from: data) {
             html = ReaderPage.html(for: article, page: page, style: ReaderMode.style)
         } else {

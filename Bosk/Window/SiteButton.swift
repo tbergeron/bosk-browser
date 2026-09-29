@@ -74,7 +74,7 @@ private final class SitePanel: NSViewController {
         stack.addArrangedSubview(Self.separator())
         // Only the devices the site asked for.
         for device in PermissionMemory.Device.allCases {
-            guard let allowed = PermissionMemory.shared.answer(for: host, device: device) else { continue }
+            guard let allowed = PermissionMemory.of(tab).answer(for: host, device: device) else { continue }
             let (symbol, title) = device == .camera ? ("video", "Camera") : ("mic", "Microphone")
             stack.addArrangedSubview(switchRow(symbol, title, on: allowed, tag: device == .camera ? 0 : 1))
         }
@@ -164,10 +164,11 @@ private final class SitePanel: NSViewController {
         switch sender.tag {
         case 0, 1:
             let device: PermissionMemory.Device = sender.tag == 0 ? .camera : .microphone
-            PermissionMemory.shared.set(on, for: host, device: device)
+            PermissionMemory.of(tab).set(on, for: host, device: device)
             guard !on else { return }
             // "Off" also stops the device in the site's open tabs. "On" works when the page asks again.
-            for tab in (NSApp.delegate as? AppDelegate)?.allTabs ?? [] where tab.url?.host() == host {
+            let isPrivate = tab.isPrivate
+            for tab in (NSApp.delegate as? AppDelegate)?.allTabs ?? [] where tab.url?.host() == host && tab.isPrivate == isPrivate {
                 if device == .camera {
                     tab.webView?.setCameraCaptureState(.none)
                 } else {
@@ -187,11 +188,15 @@ private final class SitePanel: NSViewController {
                                                contextInfo: nil, certificates: chain, showGroup: true)
     }
 
+    /// The data store of the tab: the private one in a private window.
+    private var dataStore: WKWebsiteDataStore { tab.store?.privateStore ?? .default() }
+
     /// WebKit keeps data per registrable domain ("google.com" for "mail.google.com").
     private func loadRecords() {
         let site = ContentBlocker.site(for: tab.url) ?? host
+        let dataStore = dataStore
         Task {
-            let all = await WKWebsiteDataStore.default().dataRecords(ofTypes: WKWebsiteDataStore.allWebsiteDataTypes())
+            let all = await dataStore.dataRecords(ofTypes: WKWebsiteDataStore.allWebsiteDataTypes())
             records = all.filter { site == $0.displayName || site.hasSuffix("." + $0.displayName) }
             clearButton.isEnabled = !records.isEmpty
         }
@@ -201,6 +206,7 @@ private final class SitePanel: NSViewController {
         let names = records.map(\.displayName).sorted().joined(separator: ", ")
         let records = records
         let tab = tab
+        let dataStore = dataStore
         close()
         let alert = NSAlert()
         alert.messageText = "Clear cookies and data for “\(names)”?"
@@ -209,7 +215,7 @@ private final class SitePanel: NSViewController {
         alert.addButton(withTitle: "Cancel")
         guard alert.runModal() == .alertFirstButtonReturn else { return }
         Task {
-            await WKWebsiteDataStore.default().removeData(ofTypes: WKWebsiteDataStore.allWebsiteDataTypes(), for: records)
+            await dataStore.removeData(ofTypes: WKWebsiteDataStore.allWebsiteDataTypes(), for: records)
             // Show the page without the old data.
             tab.webView?.reload()
         }

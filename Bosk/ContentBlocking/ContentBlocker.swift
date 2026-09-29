@@ -3,7 +3,7 @@ import WebKit
 
 /// A built-in blocker from filter lists: the ad blocker (EasyList and EasyPrivacy) and the cookie
 /// notice blocker (EasyList Cookie). Each one downloads its lists, converts them to WebKit rules
-/// (ContentBlockerConverter) and adds the compiled list to the user content controller of all tabs.
+/// (ContentBlockerConverter) and adds the compiled list to the user content controllers of all tabs.
 /// On a site the user allows, each page load turns the list off with private WebKit API, so the
 /// per-site switch needs no compile. Without that API, a site the user allows is a rule at the
 /// end of the list, and a change to the allowed sites compiles the list again (a few seconds).
@@ -81,6 +81,19 @@ final class ContentBlocker {
         }
     }
 
+    /// The allowed sites of the private windows: the saved sites, with the changes made in a
+    /// private window. nil when there is no change. In memory only; see `endPrivateSession`.
+    private var privateAllowedSites: Set<String>?
+
+    /// The per-site switch works in private windows only with the per-page WebKit API: without
+    /// it, the allowed sites are in the one list that all windows share.
+    static var canChangeSitesInPrivate: Bool { setRuleListsEnabled != nil }
+
+    /// The last private window closed: private windows forget their changes.
+    static func endPrivateSession() {
+        for blocker in all { blocker.privateAllowedSites = nil }
+    }
+
     /// When the lists were last downloaded. nil before the first download.
     var listsUpdated: Date? {
         (try? rulesFile.resourceValues(forKeys: [.contentModificationDateKey]))?.contentModificationDate
@@ -130,17 +143,26 @@ final class ContentBlocker {
 
     /// True when the user turned this blocker off on the site. Also true on a subdomain of an
     /// allowed site, because the allow rule covers subdomains.
-    func isAllowed(on site: String) -> Bool {
-        allowedSites.contains { site == $0 || site.hasSuffix("." + $0) }
+    func isAllowed(on site: String, isPrivate: Bool = false) -> Bool {
+        let sites = isPrivate ? privateAllowedSites ?? allowedSites : allowedSites
+        return sites.contains { site == $0 || site.hasSuffix("." + $0) }
     }
 
-    /// - Parameter reload: Runs when the new list is on the tabs, to show the page with the change.
-    func setAllowed(_ allowed: Bool, on site: String, reload: @escaping () -> Void) {
-        var sites = allowedSites
+    /// - Parameters:
+    ///   - isPrivate: A change in a private window. It is not saved, and normal windows do not get it.
+    ///   - reload: Runs when the new list is on the tabs, to show the page with the change.
+    func setAllowed(_ allowed: Bool, on site: String, isPrivate: Bool = false, reload: @escaping () -> Void) {
+        guard !isPrivate || Self.canChangeSitesInPrivate else { return }
+        var sites = isPrivate ? privateAllowedSites ?? allowedSites : allowedSites
         if allowed {
             sites.insert(site)
         } else {
             sites = sites.filter { !(site == $0 || site.hasSuffix("." + $0)) }
+        }
+        if isPrivate {
+            privateAllowedSites = sites
+            reload()
+            return changed()
         }
         allowedSites = sites
         if Self.setRuleListsEnabled != nil {
@@ -168,9 +190,9 @@ final class ContentBlocker {
     /// For a page load in a main frame: turns off the lists of the blockers that the user turned
     /// off on the page's site (and only those, not the lists of extensions). One call for all
     /// blockers, because each call replaces the exceptions of the call before it.
-    static func configure(_ preferences: WKWebpagePreferences, for url: URL?) {
+    static func configure(_ preferences: WKWebpagePreferences, for url: URL?, isPrivate: Bool) {
         guard let setRuleListsEnabled, let site = site(for: url) else { return }
-        let exceptions = all.filter { $0.isOn && $0.isAllowed(on: site) }.map(\.identifier)
+        let exceptions = all.filter { $0.isOn && $0.isAllowed(on: site, isPrivate: isPrivate) }.map(\.identifier)
         guard !exceptions.isEmpty else { return }
         // All lists on, except the ones named in the exceptions.
         setRuleListsEnabled(preferences, setRuleListsSelector, true, NSSet(array: exceptions))
@@ -266,10 +288,11 @@ final class ContentBlocker {
     }
 
     private func apply(_ list: WKContentRuleList?) {
-        // Remove only this list, never other rule lists on the controller.
-        let controller = WebViewFactory.userContentController
-        if let activeList { controller.remove(activeList) }
-        if let list { controller.add(list) }
+        // Remove only this list, never other rule lists on the controllers.
+        for controller in WebViewFactory.userContentControllers {
+            if let activeList { controller.remove(activeList) }
+            if let list { controller.add(list) }
+        }
         activeList = list
     }
 }

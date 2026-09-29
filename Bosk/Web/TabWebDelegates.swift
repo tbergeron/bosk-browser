@@ -22,7 +22,7 @@ extension Tab: WKNavigationDelegate {
         // Reader pages show HTML from the web page: none of its script may run.
         if navigationAction.request.url?.scheme == ReaderPage.scheme { preferences.allowsContentJavaScript = false }
         if navigationAction.targetFrame?.isMainFrame != false {
-            ContentBlocker.configure(preferences, for: navigationAction.request.url)
+            ContentBlocker.configure(preferences, for: navigationAction.request.url, isPrivate: isPrivate)
         }
         // An extension's sign-in (chrome.identity) ends at its chromiumapp.org address.
         if let url = navigationAction.request.url, ExtensionAuth.intercept(url, in: self) {
@@ -105,7 +105,8 @@ extension Tab: WKNavigationDelegate {
         // A reader page keeps its original page's icon, and history has the original page.
         if let url = webView.url, ReaderPage.parse(url) != nil { return }
         FaviconStore.shared.refresh(for: self)
-        if let url = webView.url {
+        // Private tabs keep no history.
+        if !isPrivate, let url = webView.url {
             let title = webView.title ?? title
             Task { await HistoryStore.shared.recordVisit(url: url, title: title) }
         }
@@ -230,7 +231,7 @@ extension Tab: WKUIDelegate {
     func webView(_ webView: WKWebView, decideMediaCapturePermissionsFor origin: WKSecurityOrigin,
                  initiatedBy frame: WKFrameInfo, type: WKMediaCaptureType) async -> WKPermissionDecision {
         guard let window = store?.window else { return .deny }
-        return await PermissionMemory.shared.decision(for: origin.host, type: type) {
+        return await PermissionMemory.of(self).decision(for: origin.host, type: type) {
             await PageDialogs.confirm(PermissionMemory.question(host: origin.host, type: type),
                                       host: nil, in: window, confirmTitle: "Allow", cancelTitle: "Don’t Allow")
         }
@@ -245,7 +246,14 @@ final class PermissionMemory {
     enum Device: CaseIterable { case camera, microphone }
 
     static let shared = PermissionMemory()
+    /// The answers in private windows. Separate, so they do not go to normal windows;
+    /// cleared when the last private window closes.
+    static let privateWindows = PermissionMemory()
     private var answers: [String: Bool] = [:]
+
+    static func of(_ tab: Tab) -> PermissionMemory { tab.isPrivate ? privateWindows : shared }
+
+    func forgetAll() { answers.removeAll() }
 
     func decision(for host: String, type: WKMediaCaptureType,
                   ask: () async -> Bool) async -> WKPermissionDecision {

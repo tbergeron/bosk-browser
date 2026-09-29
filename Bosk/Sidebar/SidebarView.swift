@@ -226,10 +226,10 @@ final class SidebarView: NSView, NSTableViewDataSource, NSTableViewDelegate {
         return store.allTabs.first { $0.id.uuidString == id }
     }
 
-    /// A normal tab dragged from the tab list of another window.
+    /// A normal tab dragged from the tab list of another window of the same type (private or normal).
     private func tabFromOtherWindow(_ info: NSDraggingInfo) -> Tab? {
         guard let id = info.draggingPasteboard.string(forType: .boskTab),
-              let tab = (NSApp.delegate as? AppDelegate)?.allTabs.first(where: { $0.id.uuidString == id }),
+              let tab = (NSApp.delegate as? AppDelegate)?.allTabs(like: store).first(where: { $0.id.uuidString == id }),
               tab.store !== store, !tab.isPinned else { return nil }
         return tab
     }
@@ -540,7 +540,8 @@ extension SidebarView: NSMenuDelegate {
         }
         // A right-click outside the selection is for that tab only.
         clearMultiSelection()
-        menu.addItem(ClosureMenuItem("Pin Tab") { [weak self] in self?.store.pin(tab) })
+        // A private window has no pinned tabs.
+        if !store.isPrivate { menu.addItem(ClosureMenuItem("Pin Tab") { [weak self] in self?.store.pin(tab) }) }
         menu.addItem(ClosureMenuItem("Duplicate Tab") { [weak self] in self?.store.duplicate(tab) })
         menu.addItem(ClosureMenuItem("Copy Address") { tab.copyAddress() })
         if let reader = ReaderMode.menuItem(for: tab) { menu.addItem(reader) }
