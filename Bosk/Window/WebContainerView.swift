@@ -8,6 +8,10 @@ final class WebContainerView: NSView {
     private(set) var webView: WKWebView?
     private var pageView: NSView?
     private let snapshotView = NSImageView()
+    /// Dims the page picture and says that the tab wakes up, until the page has loaded.
+    private let dimView = NSView()
+    private let wakeBox = NSBox()
+    private let wakeSpinner = NSProgressIndicator()
     /// The link under the mouse, at the bottom left, like Safari's status bar.
     private let statusBox = NSBox()
     private let statusLabel = NSTextField(labelWithString: "")
@@ -18,6 +22,31 @@ final class WebContainerView: NSView {
         layer?.backgroundColor = NSColor.windowBackgroundColor.cgColor
         snapshotView.imageScaling = .scaleAxesIndependently
         snapshotView.autoresizingMask = [.width, .height]
+        dimView.wantsLayer = true
+        dimView.layer?.backgroundColor = NSColor.black.withAlphaComponent(0.25).cgColor
+        dimView.autoresizingMask = [.width, .height]
+        snapshotView.addSubview(dimView)
+        wakeSpinner.style = .spinning
+        wakeSpinner.controlSize = .small
+        wakeSpinner.sizeToFit()
+        let wakeLabel = NSTextField(labelWithString: "Waking up tab…")
+        wakeLabel.textColor = .secondaryLabelColor
+        wakeLabel.sizeToFit()
+        let height = max(wakeSpinner.frame.height, wakeLabel.frame.height)
+        wakeSpinner.frame.origin = NSPoint(x: 0, y: (height - wakeSpinner.frame.height) / 2)
+        wakeLabel.frame.origin = NSPoint(x: wakeSpinner.frame.maxX + 6, y: (height - wakeLabel.frame.height) / 2)
+        wakeBox.boxType = .custom
+        wakeBox.titlePosition = .noTitle
+        wakeBox.fillColor = .windowBackgroundColor
+        wakeBox.borderColor = .separatorColor
+        wakeBox.cornerRadius = 8
+        wakeBox.contentViewMargins = NSSize(width: 12, height: 8)
+        wakeBox.contentView?.addSubview(wakeSpinner)
+        wakeBox.contentView?.addSubview(wakeLabel)
+        wakeBox.sizeToFit()
+        // Stays in the center when the window changes size.
+        wakeBox.autoresizingMask = [.minXMargin, .maxXMargin, .minYMargin, .maxYMargin]
+        snapshotView.addSubview(wakeBox)
         statusLabel.font = .systemFont(ofSize: NSFont.smallSystemFontSize)
         statusLabel.textColor = .secondaryLabelColor
         statusLabel.lineBreakMode = .byTruncatingMiddle
@@ -63,15 +92,21 @@ final class WebContainerView: NSView {
         return pageView
     }
 
-    /// Covers the web view with a picture of the page until the page draws.
+    /// Covers the web view with a dimmed picture of the page and a "Waking up tab" box
+    /// until the page draws.
     func showSnapshot(_ image: NSImage?) {
         guard let image else { return hideSnapshot() }
         snapshotView.image = image
         snapshotView.frame = bounds
+        dimView.frame = snapshotView.bounds
+        wakeBox.frame.origin = NSPoint(x: ((bounds.width - wakeBox.frame.width) / 2).rounded(),
+                                       y: ((bounds.height - wakeBox.frame.height) / 2).rounded())
+        wakeSpinner.startAnimation(nil)
         if snapshotView.superview == nil { addSubview(snapshotView) }
     }
 
     func hideSnapshot() {
+        wakeSpinner.stopAnimation(nil)
         snapshotView.removeFromSuperview()
         snapshotView.image = nil
     }
