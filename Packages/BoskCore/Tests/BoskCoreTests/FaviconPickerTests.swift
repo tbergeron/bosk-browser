@@ -36,6 +36,24 @@ struct FaviconPickerTests {
         #expect(picked?.lastPathComponent == "touch.png")
     }
 
+    @Test("A sharp icon wins over an apple-touch-icon, because touch icons are opaque and show a box on the tile")
+    func sharpIconBeatsTouchIcon() {
+        // www.vivibaby.app: a transparent 256 px icon, and a touch icon with a cream background.
+        let picked = FaviconPicker.pick(from: [candidate("/favicon.ico", "32x32"),
+                                               candidate("/favicon.png", "256x256"),
+                                               candidate("/apple-touch-icon.png", rel: "apple-touch-icon")],
+                                        pageURL: page)
+        #expect(picked?.lastPathComponent == "favicon.png")
+    }
+
+    @Test("An apple-touch-icon still wins over a small icon, so the tile is not blurry")
+    func touchIconBeatsSmallIcon() {
+        let picked = FaviconPicker.pick(from: [candidate("/32.png", "32x32"),
+                                               candidate("/touch.png", rel: "apple-touch-icon")],
+                                        pageURL: page)
+        #expect(picked?.lastPathComponent == "touch.png")
+    }
+
     @Test("SVG icons are skipped, because NSImage cannot always draw them")
     func skipsSVG() {
         let picked = FaviconPicker.pick(from: [candidate("/logo.svg", "any")], pageURL: page)

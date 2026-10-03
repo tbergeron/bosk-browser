@@ -36,11 +36,14 @@ public enum FaviconPicker {
 
     /// Icons at or just above 64 px score best: they stay sharp and are small to download.
     /// Smaller icons score lower the smaller they are; much bigger icons lose a little.
+    /// An apple-touch-icon is opaque (iOS gives it no transparency), so a sharp `icon`
+    /// wins over it. It still wins over small or unknown icons.
     static func score(_ candidate: Candidate) -> Int {
+        let isTouchIcon = candidate.rel.contains("apple-touch-icon")
         var size = largestSize(candidate.sizes)
-        if size == nil, candidate.rel.contains("apple-touch-icon") { size = 180 }
+        if size == nil, isTouchIcon { size = 180 }
         guard let size else { return 1 } // Unknown size: better than nothing.
-        if size >= targetPixels { return 10_000 - (size - targetPixels) }
+        if size >= targetPixels { return (isTouchIcon ? 5_000 : 10_000) - (size - targetPixels) }
         return size * 10
     }
 
