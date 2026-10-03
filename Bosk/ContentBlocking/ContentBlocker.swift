@@ -7,6 +7,7 @@ import WebKit
 /// On a site the user allows, each page load turns the list off with private WebKit API, so the
 /// per-site switch needs no compile. Without that API, a site the user allows is a rule at the
 /// end of the list, and a change to the allowed sites compiles the list again (a few seconds).
+/// The ad blocker also puts YouTubeAdScript on the tabs, because a rule list cannot block YouTube ads.
 @MainActor
 final class ContentBlocker {
     enum Kind {
@@ -91,7 +92,10 @@ final class ContentBlocker {
 
     /// The last private window closed: private windows forget their changes.
     static func endPrivateSession() {
-        for blocker in all { blocker.privateAllowedSites = nil }
+        for blocker in all {
+            blocker.privateAllowedSites = nil
+            blocker.updatePageScript()
+        }
     }
 
     /// When the lists were last downloaded. nil before the first download.
@@ -100,6 +104,7 @@ final class ContentBlocker {
     }
 
     func start() {
+        updatePageScript()
         load()
         let timer = Timer(timeInterval: 24 * 60 * 60, repeats: true) { [self] _ in
             MainActor.assumeIsolated {
@@ -113,6 +118,7 @@ final class ContentBlocker {
     /// - Parameter reload: Runs when the change is on the tabs, to show the page with the change.
     func setOn(_ on: Bool, reload: (() -> Void)? = nil) {
         isOn = on
+        updatePageScript()
         if let reload { pendingReloads.append(reload) }
         if on {
             load()
@@ -161,10 +167,12 @@ final class ContentBlocker {
         }
         if isPrivate {
             privateAllowedSites = sites
+            updatePageScript()
             reload()
             return changed()
         }
         allowedSites = sites
+        updatePageScript()
         if Self.setRuleListsEnabled != nil {
             reload()
         } else {
@@ -196,6 +204,38 @@ final class ContentBlocker {
         guard !exceptions.isEmpty else { return }
         // All lists on, except the ones named in the exceptions.
         setRuleListsEnabled(preferences, setRuleListsSelector, true, NSSet(array: exceptions))
+    }
+
+    // MARK: YouTube
+
+    /// The YouTube ad script on each user content controller, so a change can remove it.
+    private var pageScripts: [ObjectIdentifier: WKUserScript] = [:]
+    /// Private: WKUserContentController has no public way to remove one script. Safari uses this one.
+    private static let removeUserScriptSelector = NSSelectorFromString("_removeUserScript:")
+
+    /// Replaces the YouTube ad script with one for the current switches (ad blocker only).
+    /// The script has the allowed sites in it, so call this before the tabs reload.
+    private func updatePageScript() {
+        guard kind == .ads else { return }
+        for (controller, isPrivate) in [(WebViewFactory.userContentController, false),
+                                        (WebViewFactory.privateUserContentController, true)] {
+            let key = ObjectIdentifier(controller)
+            if let old = pageScripts[key] {
+                // Without the method, the old script stays. Two scripts would disagree, so add no new one.
+                guard controller.responds(to: Self.removeUserScriptSelector) else {
+                    NSLog("Bosk: cannot remove the YouTube ad script; the change applies after a restart")
+                    continue
+                }
+                controller.perform(Self.removeUserScriptSelector, with: old)
+                pageScripts[key] = nil
+            }
+            guard isOn else { continue }
+            let sites = isPrivate ? privateAllowedSites ?? allowedSites : allowedSites
+            let script = WKUserScript(source: YouTubeAdScript.source(allowedSites: sites), injectionTime: .atDocumentStart,
+                                      forMainFrameOnly: false, in: .page)
+            controller.addUserScript(script)
+            pageScripts[key] = script
+        }
     }
 
     // MARK: Rule list

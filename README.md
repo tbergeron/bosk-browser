@@ -9,7 +9,7 @@ A small, fast, opinionated web browser for macOS, built on WebKit.
 - Tabs live in a sidebar and pinned tabs sit in a grid. The sidebar can fold into a strip, or you can hide it.
 - Tabs you aren't using go to sleep to keep memory low. You choose the delay in Settings, or turn sleep off. Pinned tabs stay awake.
 - Chrome extensions work through WebKit's `WKWebExtension`.
-- A built-in ad and tracker blocker (EasyList and EasyPrivacy). You can turn it off in Settings, or for one site.
+- A built-in ad and tracker blocker (EasyList and EasyPrivacy). It also removes YouTube video ads. You can turn it off in Settings, or for one site.
 - Cookie notices are hidden (EasyList Cookie). You can turn this off in Settings, or for one site.
 - Reader Mode, powered by [Defuddle](https://github.com/kepano/defuddle) by [kepano](https://github.com/kepano).
 
