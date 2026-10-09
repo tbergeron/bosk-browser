@@ -24,6 +24,16 @@ final class BoskWebView: WKWebView {
         }
         // Extension items: WebKit adds them itself, with the clicked image or link.
     }
+
+    /// A tab switch, sleep or close takes the web view out of the window. If a password field has
+    /// focus then, WebKit does not turn Secure Keyboard Entry off, and it stays on until Bosk quits.
+    /// Blur first, so WebKit turns it off.
+    override func viewWillMove(toWindow newWindow: NSWindow?) {
+        if let window, newWindow !== window, (window.firstResponder as? NSView)?.isDescendant(of: self) == true {
+            window.makeFirstResponder(nil)
+        }
+        super.viewWillMove(toWindow: newWindow)
+    }
 }
 
 /// WebKit's Web Inspector (the developer tools) for a page. WebKit has no public API to open it,
