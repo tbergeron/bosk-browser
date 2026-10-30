@@ -88,7 +88,8 @@ final class ExtensionManager: NSObject {
     /// nowhere, for good, and a popup only shows its spinner (seen with Bitwarden a few seconds
     /// after its start, cause not known). Bosk pings the worker on this port from
     /// `keepWorkersLoaded`. No answer by the next ping, or the port gone while the extension
-    /// stays loaded, and the extension is loaded again.
+    /// stays loaded, and the extension is loaded again. A worker is also pinged soon after it
+    /// starts (`checkNewWorker`): a worker that runs answers within milliseconds.
     func watchWorker(_ port: WKWebExtension.MessagePort, of context: WKWebExtensionContext) {
         let id = context.uniqueIdentifier
         workerPorts[id] = port
@@ -99,6 +100,7 @@ final class ExtensionManager: NSObject {
                 self.workerPings[id] = nil
             }
         }
+        checkNewWorker(id, port: port)
         port.disconnectHandler = { [weak self] _ in
             MainActor.assumeIsolated {
                 guard let self, self.workerPorts[id] === port else { return }
@@ -110,6 +112,28 @@ final class ExtensionManager: NSObject {
             }
         }
     }
+
+    /// Dashlane's first worker after a launch often went silent about 4 s after it started,
+    /// for good, while WebKit still counted it as loaded (as in "Known WebKit gaps" in
+    /// docs/extension-compat.md). The regular pings caught it only 30 s in, after the user had
+    /// unlocked Dashlane, and the restart lost the unlock. So a new worker is pinged at 6 s and
+    /// 12 s; no answer within 2 s, and the extension is loaded again at once.
+    private func checkNewWorker(_ id: String, port: WKWebExtension.MessagePort) {
+        for delay in Self.newWorkerChecks {
+            DispatchQueue.main.asyncAfter(deadline: .now() + delay) { [weak self] in
+                guard let self, self.workerPorts[id] === port, self.workerPings[id] == nil else { return }
+                self.workerPings[id] = Date()
+                port.sendMessage(["ping": Date().timeIntervalSince1970], completionHandler: nil)
+                DispatchQueue.main.asyncAfter(deadline: .now() + Self.newWorkerAnswerTime) { [weak self] in
+                    guard let self, self.workerPorts[id] === port, self.workerPings[id] != nil else { return }
+                    self.revive(id, because: "its worker stopped answering soon after it started")
+                }
+            }
+        }
+    }
+
+    private static let newWorkerChecks: [TimeInterval] = [6, 12]
+    private static let newWorkerAnswerTime: TimeInterval = 2
 
     /// One of the extension's pages is on screen: its popup, or a tab at one of its addresses.
     func hasVisiblePage(_ id: String) -> Bool {
