@@ -89,6 +89,20 @@ enum WebViewFactory {
         return configuration
     }
 
+    /// The configuration for a tab that shows one of an extension's own pages (its
+    /// `webkit-extension://` address), or nil for any other address. WebKit loads such a
+    /// page only in a web view made from the extension's configuration; a tab's own
+    /// configuration fails it with "resource unavailable" (NSURLErrorDomain -1008).
+    /// Dashlane opens its login page in a tab this way. Private tabs have no extensions.
+    static func extensionPageConfiguration(for url: URL?, privateStore: WKWebsiteDataStore? = nil) -> WKWebViewConfiguration? {
+        guard privateStore == nil, let url,
+              let context = ExtensionManager.shared.controller.extensionContext(for: url),
+              let configuration = context.webViewConfiguration else { return nil }
+        configuration.applicationNameForUserAgent = Defaults.userAgentApplicationName
+        configuration.preferences.isElementFullscreenEnabled = true
+        return configuration
+    }
+
     /// - Parameters:
     ///   - configuration: Pass WebKit's configuration for pop-ups (`createWebViewWith`),
     ///     which has the opener's data store; nil makes a new one.
