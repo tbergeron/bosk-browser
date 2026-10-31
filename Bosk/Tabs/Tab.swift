@@ -14,6 +14,13 @@ final class Tab: NSObject {
     }
 
     let id: UUID
+    /// The tab's number for AppleScript (`id of tab`), which must be a whole number. Not saved: it changes when Bosk restarts.
+    let scriptID = Tab.nextScriptID()
+    private static var lastScriptID = 0
+    private static func nextScriptID() -> Int {
+        lastScriptID += 1
+        return lastScriptID
+    }
     /// Set when this tab is this window's copy of a pinned entry.
     var pinnedEntryID: UUID?
     var isPinned: Bool { pinnedEntryID != nil }

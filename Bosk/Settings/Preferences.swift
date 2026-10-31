@@ -22,6 +22,7 @@ enum Preferences {
     private static let adsAllowedSitesKey = "BoskAdsAllowedSites"
     private static let hidesCookieNoticesKey = "BoskHidesCookieNotices"
     private static let cookieNoticesShownSitesKey = "BoskCookieNoticesShownSites"
+    private static let allowsAppleEventsJavaScriptKey = "BoskAllowsJavaScriptFromAppleEvents"
 
     static var appearance: Appearance {
         get { UserDefaults.standard.string(forKey: appearanceKey).flatMap(Appearance.init) ?? .system }
@@ -44,6 +45,13 @@ enum Preferences {
     static var correctsSpelling: Bool {
         get { UserDefaults.standard.object(forKey: spellingKey) as? Bool ?? NSSpellChecker.isAutomaticSpellingCorrectionEnabled }
         set { UserDefaults.standard.set(newValue, forKey: spellingKey) }
+    }
+
+    /// Other apps may run JavaScript in pages through AppleScript (`execute`). Off until the user
+    /// turns it on in View > Developer, as in Chrome: a script could read any page the user is signed in to.
+    static var allowsAppleEventsJavaScript: Bool {
+        get { UserDefaults.standard.bool(forKey: allowsAppleEventsJavaScriptKey) }
+        set { UserDefaults.standard.set(newValue, forKey: allowsAppleEventsJavaScriptKey) }
     }
 
     static var sleepsTabs: Bool {

@@ -65,6 +65,13 @@ enum MainMenu {
         viewMenu.addItem(.separator())
         viewMenu.addItem(item("Show Web Inspector", #selector(BrowserWindowController.toggleWebInspector(_:)), "i",
                               [.command, .option]))
+        // Chrome's place and name for it, so apps that turn it on in Chrome find it here too.
+        let developerMenu = NSMenu(title: "Developer")
+        let appleEventsJavaScript = developerMenu.addItem(withTitle: "Allow JavaScript from Apple Events",
+                                                          action: #selector(AppDelegate.toggleAppleEventsJavaScript(_:)),
+                                                          keyEquivalent: "")
+        appleEventsJavaScript.state = Preferences.allowsAppleEventsJavaScript ? .on : .off
+        add(developerMenu, title: "Developer", to: viewMenu)
         viewMenu.addItem(.separator())
         viewMenu.addItem(item("Hide Sidebar", #selector(BrowserWindowController.toggleHidesSidebar(_:)), "S"))
         viewMenu.addItem(item("Fold Sidebar", #selector(BrowserWindowController.toggleSidebarFold(_:)), "s"))

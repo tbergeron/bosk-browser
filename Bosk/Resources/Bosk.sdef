@@ -1,0 +1,124 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE dictionary SYSTEM "file://localhost/System/Library/DTDs/sdef.dtd">
+
+<!-- The AppleScript words of Bosk. They are the words of Chrome's dictionary (windows with an
+     active tab, tabs with a number id, execute ... javascript), so scripts and apps that drive
+     Chrome drive Bosk too. Private windows are not in it. See App/Scripting.swift. -->
+<dictionary title="Bosk Terminology">
+
+	<suite name="Standard Suite" code="????" description="Common classes and commands for all applications.">
+
+		<command name="quit" code="aevtquit" description="Quit the application.">
+			<cocoa class="NSQuitCommand"/>
+		</command>
+
+		<command name="count" code="corecnte" description="Return the number of elements of a particular class within an object.">
+			<cocoa class="NSCountCommand"/>
+			<direct-parameter type="specifier" description="The objects to be counted."/>
+			<parameter name="each" code="kocl" type="type" optional="yes" description="The class of objects to be counted." hidden="yes">
+				<cocoa key="ObjectClass"/>
+			</parameter>
+			<result type="integer" description="The count."/>
+		</command>
+
+		<command name="exists" code="coredoex" description="Verify that an object exists.">
+			<cocoa class="NSExistsCommand"/>
+			<direct-parameter type="any" description="The object(s) to check."/>
+			<result type="boolean" description="Did the object(s) exist?"/>
+		</command>
+
+		<command name="make" code="corecrel" description="Create a new object.">
+			<cocoa class="NSCreateCommand"/>
+			<parameter name="new" code="kocl" type="type" description="The class of the new object.">
+				<cocoa key="ObjectClass"/>
+			</parameter>
+			<parameter name="at" code="insh" type="location specifier" optional="yes" description="The location at which to insert the object.">
+				<cocoa key="Location"/>
+			</parameter>
+			<parameter name="with properties" code="prdt" type="record" optional="yes" description="The initial values for properties of the object.">
+				<cocoa key="KeyDictionary"/>
+			</parameter>
+			<result type="specifier" description="The new object."/>
+		</command>
+
+		<command name="close" code="coreclos" description="Close a window.">
+			<cocoa class="NSCloseCommand"/>
+			<direct-parameter type="specifier" description="The window to close."/>
+		</command>
+
+		<class name="application" code="capp" description="The application's top-level scripting object.">
+			<cocoa class="NSApplication"/>
+			<property name="name" code="pnam" type="text" access="r" description="The name of the application."/>
+			<property name="frontmost" code="pisf" type="boolean" access="r" description="Is this the active application?">
+				<cocoa key="isActive"/>
+			</property>
+			<property name="version" code="vers" type="text" access="r" description="The version number of the application."/>
+			<element type="window">
+				<cocoa key="scriptWindows"/>
+			</element>
+			<responds-to command="quit">
+				<cocoa method="handleQuitScriptCommand:"/>
+			</responds-to>
+		</class>
+
+		<class name="window" code="cwin" description="A normal browser window.">
+			<cocoa class="BoskScriptWindow"/>
+			<property name="name" code="pnam" type="text" access="r" description="The title of the window."/>
+			<property name="id" code="ID  " type="integer" access="r" description="The unique identifier of the window.">
+				<cocoa key="uniqueID"/>
+			</property>
+			<property name="index" code="pidx" type="integer" description="The index of the window, ordered front to back.">
+				<cocoa key="orderedIndex"/>
+			</property>
+			<property name="bounds" code="pbnd" description="The bounding rectangle of the window: {left, top, right, bottom} from the top left of the main screen.">
+				<type type="integer" list="yes"/>
+				<cocoa key="scriptBounds"/>
+			</property>
+			<property name="active tab" code="acTa" type="tab" access="r" description="The selected tab.">
+				<cocoa key="activeTab"/>
+			</property>
+			<property name="active tab index" code="acTI" type="integer" description="The index of the selected tab, from 1.">
+				<cocoa key="activeTabIndex"/>
+			</property>
+			<element type="tab">
+				<cocoa key="scriptTabs"/>
+			</element>
+			<responds-to command="close">
+				<cocoa method="handleCloseScriptCommand:"/>
+			</responds-to>
+		</class>
+
+	</suite>
+
+	<suite name="Bosk Suite" code="Bosk" description="Bosk tabs and their pages.">
+
+		<class name="tab" code="BTab" description="A tab.">
+			<cocoa class="Bosk.Tab"/>
+			<property name="id" code="ID  " type="integer" access="r" description="The unique identifier of the tab, until Bosk quits.">
+				<cocoa key="uniqueID"/>
+			</property>
+			<property name="title" code="BTtl" type="text" access="r" description="The title of the page.">
+				<cocoa key="scriptTitle"/>
+			</property>
+			<property name="URL" code="URL " type="text" description="The address of the page. Set it to load an http or https page.">
+				<cocoa key="scriptURL"/>
+			</property>
+			<property name="loading" code="BLdg" type="boolean" access="r" description="Is the page loading?">
+				<cocoa key="isLoading"/>
+			</property>
+			<responds-to command="execute">
+				<cocoa method="handleExecuteScriptCommand:"/>
+			</responds-to>
+		</class>
+
+		<command name="execute" code="BoskExJs" description="Run JavaScript in the page of a tab and return its result. Turn it on in View > Developer > Allow JavaScript from Apple Events.">
+			<direct-parameter type="tab" description="The tab."/>
+			<parameter name="javascript" code="JvSc" type="text" description="The JavaScript.">
+				<cocoa key="javascript"/>
+			</parameter>
+			<result type="any" description="The result of the JavaScript."/>
+		</command>
+
+	</suite>
+
+</dictionary>

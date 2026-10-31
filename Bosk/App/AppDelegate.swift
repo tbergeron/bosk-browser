@@ -5,7 +5,7 @@ import WebKit
 @main
 @MainActor
 final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
-    private var windowControllers: [BrowserWindowController] = []
+    private(set) var windowControllers: [BrowserWindowController] = []
     /// The data store of all private windows: cookies and site data in memory only.
     /// Made for the first private window; nil when the last one closes, so its data is gone.
     private var privateStore: WKWebsiteDataStore?
@@ -103,15 +103,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
     }
 
     /// - Parameter isPrivate: A private window: its tabs keep nothing after the last private window closes.
+    /// - Parameter activates: false keeps the user in their app (a window that a script opens).
     @discardableResult
-    func openWindow(showCommandBar: Bool = true, frame: NSRect? = nil, isPrivate: Bool = false) -> BrowserWindowController {
+    func openWindow(showCommandBar: Bool = true, frame: NSRect? = nil, isPrivate: Bool = false,
+                    activates: Bool = true) -> BrowserWindowController {
         if isPrivate, privateStore == nil { privateStore = .nonPersistent() }
         let controller = BrowserWindowController(privateStore: isPrivate ? privateStore : nil)
         if let frame { controller.window?.setFrame(frame, display: false) }
         windowControllers.append(controller)
         if !isPrivate { ExtensionManager.shared.controller.didOpenWindow(controller) }
         controller.showWindow(nil)
-        NSApp.activate()
+        if activates { NSApp.activate() }
         if showCommandBar { controller.showCommandBar(target: .newTab) }
         return controller
     }

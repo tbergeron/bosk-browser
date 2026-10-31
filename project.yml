@@ -39,6 +39,9 @@ targets:
         NSMicrophoneUsageDescription: A website you use wants to use the microphone.
         NSLocationUsageDescription: A website you use wants to know your location.
         LSMinimumSystemVersion: $(MACOSX_DEPLOYMENT_TARGET)
+        # AppleScript: Chrome's words for windows, tabs and page JavaScript (Bosk.sdef, App/Scripting.swift).
+        NSAppleScriptEnabled: true
+        OSAScriptingDefinition: Bosk.sdef
         # Sparkle updates. Both values come from build settings; see scripts/release.sh.
         SUFeedURL: $(SPARKLE_FEED_URL)
         SUPublicEDKey: $(SPARKLE_PUBLIC_KEY)
