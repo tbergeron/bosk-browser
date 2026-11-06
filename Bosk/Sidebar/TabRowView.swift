@@ -21,6 +21,24 @@ final class TabRowView: NSTableRowView {
     private var isLastInGroup = false
     private let titleField = NSTextField(labelWithString: "")
     private let closeButton = NSButton()
+    /// The close button's X, drawn on a 10 pt square. The "xmark" symbol is 11 pt wide, so in
+    /// a 22 pt button it started half a pixel off and looked squashed on a 1x display.
+    private static let closeImage: NSImage = {
+        let image = NSImage(size: NSSize(width: 10, height: 10), flipped: false) { _ in
+            let path = NSBezierPath()
+            path.move(to: NSPoint(x: 1.5, y: 1.5))
+            path.line(to: NSPoint(x: 8.5, y: 8.5))
+            path.move(to: NSPoint(x: 1.5, y: 8.5))
+            path.line(to: NSPoint(x: 8.5, y: 1.5))
+            path.lineWidth = 1.6
+            path.lineCapStyle = .round
+            NSColor.black.setStroke()
+            path.stroke()
+            return true
+        }
+        image.isTemplate = true
+        return image
+    }()
     private var isCurrent = false
     /// Cmd+clicked into the selection of many tabs.
     private var isMultiSelected = false
@@ -57,8 +75,9 @@ final class TabRowView: NSTableRowView {
         titleField.textColor = .labelColor
         addSubview(titleField)
 
-        closeButton.image = NSImage(systemSymbolName: "xmark", accessibilityDescription: "Close Tab")
-        closeButton.symbolConfiguration = .init(pointSize: 10, weight: .semibold)
+        closeButton.image = Self.closeImage
+        closeButton.imagePosition = .imageOnly
+        closeButton.setAccessibilityLabel("Close Tab")
         closeButton.isBordered = false
         closeButton.contentTintColor = .secondaryLabelColor
         closeButton.target = self
