@@ -6,6 +6,8 @@ import WebKit
 final class BoskWebView: WKWebView {
     override func willOpenMenu(_ menu: NSMenu, with event: NSEvent) {
         super.willOpenMenu(menu, with: event)
+        // "Open Link" does the same as a click on the link.
+        menu.items.removeAll { $0.identifier?.rawValue == "WKMenuItemIdentifierOpenLink" }
         for item in menu.items {
             // WebKit opens these through createWebViewWith, which makes a new tab in Bosk.
             switch item.identifier?.rawValue {
