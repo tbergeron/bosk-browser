@@ -106,10 +106,22 @@ final class Tab: NSObject {
     // MARK: Loading
 
     func load(_ url: URL) {
+        // An extension's page needs a web view made for it (see `extensionPageConfiguration`),
+        // and a web page needs a tab's own web view again. Going between them makes a new one.
+        if let webView, Self.isExtensionPage(url) != Self.isExtensionPage(webView.url ?? self.url) {
+            saveSessionState()
+            detach(webView)
+            self.url = url
+        }
         let webView = webView ?? wake(loadSavedState: false)
         webView.load(URLRequest(url: url))
         self.url = url
         notify(.url)
+    }
+
+    /// An address of an installed extension's own pages.
+    private static func isExtensionPage(_ url: URL?) -> Bool {
+        url.map { ExtensionManager.shared.controller.extensionContext(for: $0) != nil } ?? false
     }
 
     /// Makes the web view. It restores the saved session state (the page reloads),
@@ -117,7 +129,9 @@ final class Tab: NSObject {
     @discardableResult
     func wake(loadSavedState: Bool = true) -> WKWebView {
         if let webView { return webView }
-        let webView = WebViewFactory.makeWebView(privateStore: store?.privateStore)
+        let webView = WebViewFactory.makeWebView(
+            configuration: WebViewFactory.extensionPageConfiguration(for: url, privateStore: store?.privateStore),
+            privateStore: store?.privateStore)
         attach(webView)
         if loadSavedState {
             if let sessionState {
