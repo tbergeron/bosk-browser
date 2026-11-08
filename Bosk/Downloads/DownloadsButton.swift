@@ -5,6 +5,8 @@ import AppKit
 @MainActor
 final class DownloadsButton: NSButton {
     private let popover = NSPopover()
+    /// The number of downloads at the last refresh. More than this means a download started.
+    private var itemCount = 0
 
     init() {
         super.init(frame: NSRect(x: 0, y: 0, width: 28, height: 28))
@@ -18,6 +20,7 @@ final class DownloadsButton: NSButton {
         action = #selector(toggle)
         popover.behavior = .transient
         isHidden = true
+        wantsLayer = true
         DownloadManager.shared.addObserver(self) { [weak self] in self?.refresh() }
     }
 
@@ -30,10 +33,32 @@ final class DownloadsButton: NSButton {
         isHidden = DownloadManager.shared.items.isEmpty
         superview?.needsLayout = true
         contentTintColor = DownloadManager.shared.hasRunningDownloads ? .controlAccentColor : .secondaryLabelColor
+        let count = DownloadManager.shared.items.count
+        if count > itemCount { bounce() }
+        itemCount = count
         guard popover.isShown else { return }
         // The button hides when the list is empty, so the popover must not stay open.
         if isHidden { return popover.close() }
         popover.contentViewController = DownloadsList()
+    }
+
+    /// Makes the icon grow and spring back two times, so the user sees that a download started.
+    /// The small icon alone in the corner did not catch the user's attention.
+    private func bounce() {
+        guard !NSWorkspace.shared.accessibilityDisplayShouldReduceMotion, let layer else { return }
+        // The layer of an NSView scales from its bottom-left corner, so move the center to the
+        // corner, scale, and move it back.
+        let center = CGPoint(x: bounds.midX, y: bounds.midY)
+        func scaled(_ scale: CGFloat) -> NSValue {
+            var transform = CATransform3DMakeTranslation(center.x, center.y, 0)
+            transform = CATransform3DScale(transform, scale, scale, 1)
+            return NSValue(caTransform3D: CATransform3DTranslate(transform, -center.x, -center.y, 0))
+        }
+        let animation = CAKeyframeAnimation(keyPath: "transform")
+        animation.values = [1, 1.5, 0.9, 1.35, 0.95, 1].map(scaled)
+        animation.duration = 0.9
+        animation.timingFunction = CAMediaTimingFunction(name: .easeInEaseOut)
+        layer.add(animation, forKey: "downloadStarted")
     }
 
     @objc private func toggle() {
