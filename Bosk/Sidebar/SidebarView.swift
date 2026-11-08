@@ -25,6 +25,8 @@ final class SidebarView: NSView, NSTableViewDataSource, NSTableViewDelegate {
     private(set) var isCompact = false
     /// The normal tab in a drag from the tab list.
     private var draggedTab: Tab?
+    /// The rows of a drag from this list. They leave their place while the drop moves the other rows.
+    private var draggedRows = IndexSet()
     /// Tabs added to the selection with Cmd+click. With any, the current tab is in the selection too.
     private var multiSelection: Set<UUID> = []
     /// The table rows: group headers, the visible tabs, and "New Tab". Made in `reloadTabs`.
@@ -78,7 +80,10 @@ final class SidebarView: NSView, NSTableViewDataSource, NSTableViewDelegate {
             return rows[row] != .newTab
         }
         tableView.setDraggingSourceOperationMask(.move, forLocal: true)
-        tableView.draggingDestinationFeedbackStyle = .gap
+        // The list moves its rows itself (moveRowsForDrop).
+        tableView.draggingDestinationFeedbackStyle = .none
+        tableView.onDragExit = { [weak self] in self?.moveRowsForDrop(gapAbove: nil) }
+        tableView.onDragEnd = { [weak self] in self?.endDropFeedback() }
         scrollView.documentView = tableView
         scrollView.drawsBackground = false
         scrollView.hasVerticalScroller = false
@@ -264,6 +269,7 @@ final class SidebarView: NSView, NSTableViewDataSource, NSTableViewDelegate {
                 item.setDraggingFrame(frame, contents: image)
             }
         }
+        draggedRows = rowIndexes
         draggedTab = rowIndexes.first.flatMap { tab(atRow: $0) }
         guard draggedTab != nil else { return }
         // A tab dropped outside the window becomes a window there: do not slide it back.
@@ -275,6 +281,8 @@ final class SidebarView: NSView, NSTableViewDataSource, NSTableViewDelegate {
 
     func tableView(_ tableView: NSTableView, draggingSession session: NSDraggingSession,
                    endedAt screenPoint: NSPoint, operation: NSDragOperation) {
+        // Also for a drop in another window or outside, where this list gets no "drag ended".
+        endDropFeedback()
         pinnedGrid.isShowingDropZone = false
         needsLayout = true
         let tab = draggedTab
@@ -287,23 +295,42 @@ final class SidebarView: NSView, NSTableViewDataSource, NSTableViewDelegate {
 
     func tableView(_ tableView: NSTableView, validateDrop info: NSDraggingInfo, proposedRow row: Int,
                    proposedDropOperation dropOperation: NSTableView.DropOperation) -> NSDragOperation {
+        // The drop row comes from the pointer and the rows' places before the drag, not from the
+        // proposed row: the table proposed a drop on the middle of a row, and above that row was
+        // half a row late going down. The half of the row under the pointer decides.
+        let pointer = tableView.convert(info.draggingLocation, from: nil).y
+        let hit = tableView.row(at: NSPoint(x: tableView.bounds.midX, y: pointer))
+        let hitRect = hit >= 0 ? tableView.rect(ofRow: hit) : .zero
+        let above = hit < 0 ? (pointer <= 0 ? 0 : rows.count) : (pointer > hitRect.midY ? hit + 1 : hit)
         if let dragged = group(from: info) {
-            // A group goes between groups and loose tabs. Inside another group, show the line
-            // above that group's header, as the group cannot go there.
-            var target = row
-            if rows.indices.contains(row), case .tab(let index) = rows[row],
+            // A group goes between groups and loose tabs, not inside another group. So the
+            // other group moves out of the way as one block: the half of the block decides.
+            var target = above
+            if rows.indices.contains(above), case .tab(let index) = rows[above],
                let other = store.tabs[index].groupID, other != dragged,
-               let header = rows.firstIndex(of: .group(other)) {
-                target = header
+               let header = rows.firstIndex(of: .group(other)),
+               let last = rows.lastIndex(where: { if case .tab(let i) = $0 { store.tabs[i].groupID == other } else { false } }) {
+                let block = tableView.rect(ofRow: header).union(tableView.rect(ofRow: last))
+                target = pointer > block.midY ? last + 1 : header
             }
             tableView.setDropRow(target, dropOperation: .above)
+            moveRowsForDrop(gapAbove: target)
             return .move
         }
         // Pinned tabs are in every window already, so only normal tabs come from another window.
-        guard tab(from: info) != nil || tabFromOtherWindow(info) != nil else { return [] }
-        // On a group header, the tab joins the group. On any other row, it goes above the row.
-        let isHeader = if rows.indices.contains(row), case .group = rows[row] { true } else { false }
-        if dropOperation == .on, !isHeader { tableView.setDropRow(row, dropOperation: .above) }
+        let dragged = tab(from: info) ?? tabFromOtherWindow(info)
+        guard let dragged else { return [] }
+        // On the middle half of a group header, a tab joins the group. A tab of that group is in
+        // it already, so for that tab the header is a row like the others (else the gap closed on
+        // the header). Anywhere else, the tab goes above the row or the row below it.
+        let onHeaderMiddle = abs(pointer - hitRect.midY) < hitRect.height / 4
+        if onHeaderMiddle, rows.indices.contains(hit), case .group(let id) = rows[hit], dragged.groupID != id {
+            tableView.setDropRow(hit, dropOperation: .on)
+            moveRowsForDrop(gapAbove: nil, header: hit)
+        } else {
+            tableView.setDropRow(above, dropOperation: .above)
+            moveRowsForDrop(gapAbove: above)
+        }
         return .move
     }
 
@@ -327,6 +354,35 @@ final class SidebarView: NSView, NSTableViewDataSource, NSTableViewDelegate {
                           group: target.groupID)
         }
         return true
+    }
+
+    /// Moves the rows out of the way of a drop: the dragged rows leave their place, and the rows
+    /// open a gap above row `drop`. With no drop row, the rows go back to their places, and a
+    /// `header` the tab joins shows the hover box. The table's gap style did this before, but it
+    /// did not move the row just above a tab dragged up, so two rows showed in one place.
+    private func moveRowsForDrop(gapAbove drop: Int?, header: Int? = nil) {
+        let height = tableView.rowHeight
+        NSAnimationContext.runAnimationGroup { context in
+            context.duration = 0.15
+            for row in 0..<tableView.numberOfRows {
+                guard let rowView = tableView.rowView(atRow: row, makeIfNecessary: false) else { continue }
+                var y = tableView.rect(ofRow: row).minY
+                if let drop {
+                    y -= CGFloat(draggedRows.count(in: 0..<row)) * height
+                    if row >= drop { y += CGFloat(max(1, draggedRows.count)) * height }
+                }
+                // With no gap style, the table does not hide the dragged row.
+                rowView.isHidden = draggedRows.contains(row)
+                if rowView.frame.minY != y { rowView.animator().setFrameOrigin(NSPoint(x: rowView.frame.minX, y: y)) }
+                (rowView as? TabGroupRowView)?.isDropTarget = row == header
+            }
+        }
+    }
+
+    /// The drag ended: the rows go back to their places, and the dragged rows show again.
+    private func endDropFeedback() {
+        draggedRows = []
+        moveRowsForDrop(gapAbove: nil)
     }
 
     /// A picture of the row on the sidebar color, so it can be read over the page. It is made at
@@ -466,6 +522,18 @@ final class SidebarView: NSView, NSTableViewDataSource, NSTableViewDelegate {
 @MainActor
 private final class SidebarTableView: NSTableView {
     var canDragRow: ((Int) -> Bool)?
+    var onDragExit: (() -> Void)?
+    var onDragEnd: (() -> Void)?
+
+    override func draggingExited(_ sender: (any NSDraggingInfo)?) {
+        super.draggingExited(sender)
+        onDragExit?()
+    }
+
+    override func draggingEnded(_ sender: any NSDraggingInfo) {
+        super.draggingEnded(sender)
+        onDragEnd?()
+    }
 
     override func canDragRows(with rowIndexes: IndexSet, at mouseDownPoint: NSPoint) -> Bool {
         rowIndexes.allSatisfy { canDragRow?($0) ?? true } && super.canDragRows(with: rowIndexes, at: mouseDownPoint)

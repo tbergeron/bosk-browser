@@ -15,6 +15,10 @@ final class TabGroupRowView: NSTableRowView {
     private let letterField = NSTextField(labelWithString: "")
     private var color: NSColor = .labelColor
     private var isHovered = false
+    /// A dragged tab joins the group when it is dropped here. The header shows the hover box.
+    var isDropTarget = false {
+        didSet { if isDropTarget != oldValue { updateColors() } }
+    }
     private var isCompact = false
     /// No tab row below: a folded group whose tabs are all hidden.
     private var endsHere = false
@@ -92,7 +96,7 @@ final class TabGroupRowView: NSTableRowView {
     private func updateColors() {
         CATransaction.begin()
         CATransaction.setAnimationDuration(0.12)
-        backgroundLayer.backgroundColor = isHovered ? resolved(SidebarColors.hover) : NSColor.clear.cgColor
+        backgroundLayer.backgroundColor = isHovered || isDropTarget ? resolved(SidebarColors.hover) : NSColor.clear.cgColor
         barLayer.backgroundColor = resolved(color)
         tintLayer.backgroundColor = resolved(color.withAlphaComponent(SidebarColors.groupTintAlpha))
         CATransaction.commit()
@@ -128,6 +132,7 @@ final class TabGroupRowView: NSTableRowView {
     override func prepareForReuse() {
         super.prepareForReuse()
         isHovered = false
+        isDropTarget = false
         SidebarTooltip.hide(for: self)
     }
 }
