@@ -7,11 +7,16 @@ import WebKit
 /// gives `navigator` a Chrome user agent and adds those two APIs, which call Bosk.
 /// The script does not set the web view's user agent: when a page loads with another user
 /// agent, WebKit stops the extension workers and does not start them again (found by Search).
+/// The message handler is in Bosk's script world, and a relay script there carries the calls.
+/// A handler in the page world gives each site a `window.webkit`, which real Safari does not
+/// have: sites use it to detect an embedded browser.
 /// The store scripts can change at any time; the "Add to Bosk" button is the fallback.
 @MainActor
 enum WebStoreBridge {
     static let host = "chromewebstore.google.com"
     static let messageName = "boskWebStore"
+    private static let callEvent = "boskWebStoreCall"
+    private static let replyEvent = "boskWebStoreReply"
 
     /// The store checks that the user agent names are exactly "Mozilla AppleWebKit Chrome Safari".
     /// Keep the version below 142: from 142 the store can use a different check.
@@ -22,8 +27,27 @@ enum WebStoreBridge {
     static func install(in controller: WKUserContentController) {
         controller.addUserScript(WKUserScript(source: script, injectionTime: .atDocumentStart,
                                               forMainFrameOnly: true, in: .page))
-        controller.addScriptMessageHandler(MessageHandler(), contentWorld: .page, name: messageName)
+        controller.addUserScript(WKUserScript(source: relayScript, injectionTime: .atDocumentStart,
+                                              forMainFrameOnly: true, in: WebViewFactory.scriptWorld))
+        controller.addScriptMessageHandler(MessageHandler(), contentWorld: WebViewFactory.scriptWorld, name: messageName)
     }
+
+    /// Carries the page script's calls to Bosk and the answers back. The two scripts are in
+    /// different worlds, so they share only the DOM: JSON text in events on the document.
+    private static let relayScript = """
+        (() => {
+          if (location.hostname !== '\(host)') return;
+          const handler = window.webkit.messageHandlers.\(messageName);
+          document.addEventListener('\(callEvent)', (e) => {
+            const { id, body } = JSON.parse(e.detail);
+            const reply = (answer) => document.dispatchEvent(
+              new CustomEvent('\(replyEvent)', { detail: JSON.stringify({ id, ...answer }) }));
+            handler.postMessage(body).then(
+              (result) => reply({ result }),
+              (error) => reply({ error: String(error.message || error) }));
+          });
+        })();
+        """
 
     /// The subset of `chrome.webstorePrivate` and `chrome.management` that the store page uses.
     /// Errors go in `chrome.runtime.lastError` while the callback runs, as in Chrome.
@@ -35,7 +59,6 @@ enum WebStoreBridge {
                                       ['vendor', 'Google Inc.']]) {
             Object.defineProperty(Navigator.prototype, key, { get: () => value, configurable: true });
           }
-          const handler = window.webkit.messageHandlers.\(messageName);
           const chrome = window.chrome = window.chrome || {};
           chrome.runtime = chrome.runtime || {};
           const call = (callback, error, ...args) => {
@@ -52,7 +75,19 @@ enum WebStoreBridge {
             };
           };
           const onInstalled = event(), onUninstalled = event();
-          const send = (body) => handler.postMessage(body);
+          let lastCall = 0;
+          const pending = new Map();
+          document.addEventListener('\(replyEvent)', (e) => {
+            const { id, result, error } = JSON.parse(e.detail);
+            const promise = pending.get(id);
+            pending.delete(id);
+            if (error === undefined) promise.resolve(result); else promise.reject(error);
+          });
+          const send = (body) => new Promise((resolve, reject) => {
+            const id = ++lastCall;
+            pending.set(id, { resolve, reject });
+            document.dispatchEvent(new CustomEvent('\(callEvent)', { detail: JSON.stringify({ id, body }) }));
+          });
           chrome.webstorePrivate = {
             getExtensionStatus: (id, manifest, callback) => call(callback, null, 'installable'),
             isInIncognitoMode: (callback) => call(callback, null, false),
@@ -86,8 +121,7 @@ enum WebStoreBridge {
         })();
         """
 
-    /// Receives calls from the store page. Only the store's main frame may call, because
-    /// the handler is in the page world, where any site's script could post to it.
+    /// Receives calls from the store page, through the relay. Only the store's main frame may call.
     private final class MessageHandler: NSObject, WKScriptMessageHandlerWithReply {
         func userContentController(_ userContentController: WKUserContentController,
                                    didReceive message: WKScriptMessage) async -> (Any?, String?) {
