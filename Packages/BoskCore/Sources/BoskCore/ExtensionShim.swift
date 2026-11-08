@@ -51,7 +51,8 @@ public enum ExtensionShim {
             for name in [stamp, addedFile] { try? files.removeItem(at: folder.appending(path: name)) }
         }
         let stampURL = folder.appending(path: stamp)
-        let wanted = version + "-" + chromeVersion + (verbose ? "-verbose" : "")
+        // "ascii": so that extensions prepared before `asciiScript` existed get it too.
+        let wanted = version + "-ascii-" + chromeVersion + (verbose ? "-verbose" : "")
         if (try? String(contentsOf: stampURL, encoding: .utf8)) == wanted { return }
         let manifestURL = folder.appending(path: "manifest.json")
         guard let data = try? Data(contentsOf: manifestURL),
@@ -109,6 +110,12 @@ public enum ExtensionShim {
                 if var js = entry["js"] as? [String] {
                     if !js.contains(file) { js.insert(file, at: 0) }
                     entry["js"] = js
+                    for name in js {
+                        guard let path = inside(name, of: folder),
+                              let source = try? String(contentsOf: path, encoding: .utf8),
+                              let ascii = asciiScript(source) else { continue }
+                        try? ascii.write(to: path, atomically: true, encoding: .utf8)
+                    }
                 }
                 return entry
             }
@@ -134,6 +141,33 @@ public enum ExtensionShim {
             try? html.write(to: url, atomically: true, encoding: .utf8)
         }
         try? wanted.write(to: stampURL, atomically: true, encoding: .utf8)
+    }
+
+    /// `source` with each non-ASCII character written as a `\uXXXX` escape; nil if there is
+    /// nothing to change or an escape could change what the script does.
+    /// Each web process keeps a copy of each content script, also on sites where the script does
+    /// not run, and one non-ASCII character makes that copy 16-bit. The Chinese comments in
+    /// Return YouTube Dislike's 4.3 MB script made each copy 8.6 MB.
+    static func asciiScript(_ source: String) -> String? {
+        guard source.utf8.contains(where: { $0 > 0x7F }), !source.contains("String.raw") else { return nil }
+        var ascii = String.UnicodeScalarView()
+        var previous: Unicode.Scalar?
+        for scalar in source.unicodeScalars {
+            defer { previous = scalar }
+            if scalar.isASCII {
+                ascii.append(scalar)
+                continue
+            }
+            // Not after a backslash, which would escape the escape. Not a space or line end,
+            // which is not the same as its escape in code. Not an identifier character past
+            // U+FFFF, which has no \uXXXX form in an identifier.
+            if previous == "\\" || scalar.properties.isWhitespace || scalar == "\u{FEFF}"
+                || (scalar.value > 0xFFFF && scalar.properties.isIDContinue) { return nil }
+            for unit in String(scalar).utf16 {
+                ascii.append(contentsOf: String(format: "\\u%04x", unit).unicodeScalars)
+            }
+        }
+        return String(ascii)
     }
 
     /// The permissions `prepare` added to the manifest.

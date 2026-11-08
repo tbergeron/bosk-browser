@@ -225,6 +225,43 @@ struct ExtensionShimTests {
         #expect(try listenersLeftAfterPagehide(persisted: true) >= 3)
     }
 
+    @Test("A content script becomes ASCII, because one other character doubles its copy in each web process")
+    func contentScriptBecomesASCII() throws {
+        let data = try JSONSerialization.data(withJSONObject: [
+            "manifest_version": 3, "content_scripts": [["matches": ["<all_urls>"], "js": ["a.js"]]],
+        ])
+        try data.write(to: folder.appending(path: "manifest.json"))
+        try write("// 图形\nvar text = '•';\n", to: "a.js")
+        try ExtensionShim.prepare(folder, chromeVersion: "1")
+        let script = try read("a.js")
+        #expect(script.utf8.allSatisfy { $0 < 0x80 })
+        #expect(script.contains("\\u2022"))
+    }
+
+    @Test("An escaped script does the same as the original, so the extension does not change")
+    func escapedScriptMeansTheSame() throws {
+        let source = #"[`é ${1} ☃`, "😀", /[☃😀]/u.test("😀"), /☃/.test("☃"), ({ é: 2 }).é]"#
+        let escaped = try #require(ExtensionShim.asciiScript(source))
+        #expect(escaped.utf8.allSatisfy { $0 < 0x80 })
+        let original = try #require(JSContext().evaluateScript(source).toArray() as? [AnyHashable])
+        let context = try #require(JSContext())
+        let result = try #require(context.evaluateScript(escaped).toArray() as? [AnyHashable])
+        #expect(context.exception == nil)
+        #expect(result == original)
+    }
+
+    @Test("A script stays as it is if an escape could change or break it", arguments: [
+        #""\☃""#,                  // A backslash before the character.
+        "var a\u{00A0}= 1;",       // A space outside a string is not the same as its escape.
+        "/* x\u{2028} */ var é;",  // A line end.
+        "\u{FEFF}var é;",          // A byte order mark.
+        "var \u{1D49C} = 1;",      // A letter past U+FFFF, as an identifier.
+        "String.raw`☃`",            // The raw text of a template would show the escape.
+    ])
+    func riskyScriptIsLeftAlone(source: String) {
+        #expect(ExtensionShim.asciiScript(source) == nil)
+    }
+
     @Test("A worker path outside the package is not read or written")
     func workerOutsideFolderIsLeftAlone() throws {
         #expect(ExtensionShim.inside("../outside.js", of: folder) == nil)
