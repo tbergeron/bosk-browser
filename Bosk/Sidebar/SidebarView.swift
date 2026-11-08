@@ -530,8 +530,8 @@ private final class SidebarTableView: NSTableView {
         onDragExit?()
     }
 
+    // No super call: NSTableView does not have `draggingEnded:`, and the call crashed the app.
     override func draggingEnded(_ sender: any NSDraggingInfo) {
-        super.draggingEnded(sender)
         onDragEnd?()
     }
 
