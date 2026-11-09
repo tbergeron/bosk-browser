@@ -57,9 +57,17 @@ final class Tab: NSObject {
         didSet { if hoveredLink != oldValue { notify(.hoveredLink) } }
     }
 
-    /// This tab's zoom when the user changed it with Cmd+= / Cmd+-; nil follows the default.
-    var zoomOverride: Double? {
-        didSet { webView?.pageZoom = zoomOverride ?? PageZoom.defaultZoom }
+    var zoom: Double { PageZoom.zoom(for: url, isPrivate: isPrivate) }
+
+    /// One step larger or smaller. The level is saved for the page's site.
+    func changeZoom(larger: Bool) {
+        PageZoom.set(PageZoom.next(after: zoom, larger: larger), for: url, isPrivate: isPrivate)
+    }
+
+    /// Shows the page at its site's zoom. Call when the page changes or the level changes.
+    func applyZoom() {
+        // Not `url`: it can change after WebKit tells us that a page committed.
+        webView?.pageZoom = PageZoom.zoom(for: webView?.url.map(ReaderPage.pageURL) ?? url, isPrivate: isPrivate)
     }
 
     /// Set in the site panel. Kept while the tab sleeps, so a woken tab stays silent.
@@ -173,7 +181,7 @@ final class Tab: NSObject {
 
     private func attach(_ webView: WKWebView) {
         self.webView = webView
-        webView.pageZoom = zoomOverride ?? PageZoom.defaultZoom
+        applyZoom()
         if isMuted { PageMute.set(true, on: webView) }
         WebViewFactory.register(webView, for: self)
         webView.navigationDelegate = self

@@ -13,7 +13,7 @@ final class AdBlockerButton: NSButton {
         isBordered = false
         refusesFirstResponder = true
         symbolConfiguration = .init(pointSize: 14, weight: .medium)
-        contentTintColor = .secondaryLabelColor
+        contentTintColor = .topBarIcon
         target = self
         action = #selector(showMenu)
         ContentBlocker.ads.addObserver(self) { [weak self] in self?.refresh() }

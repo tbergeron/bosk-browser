@@ -3,7 +3,7 @@ import SecurityInterface
 import WebKit
 
 /// The sliders button before the ad blocker shield, on web pages. It opens the site panel: the connection,
-/// the camera and microphone answers, sound, and a button that clears the site's data.
+/// the camera and microphone answers, sound, zoom, and a button that clears the site's data.
 @MainActor
 final class SiteButton: NSButton {
     private let popover = NSPopover()
@@ -15,7 +15,7 @@ final class SiteButton: NSButton {
         symbolConfiguration = .init(pointSize: 14, weight: .medium)
         isBordered = false
         refusesFirstResponder = true
-        contentTintColor = .secondaryLabelColor
+        contentTintColor = .topBarIcon
         toolTip = "Site Settings"
         target = self
         action = #selector(toggle)
@@ -50,6 +50,8 @@ private final class SitePanel: NSViewController {
     private let host: String
     private let close: () -> Void
     private let clearButton = NSButton()
+    private let zoomLabel = NSTextField(labelWithString: "")
+    private let zoomButtons = NSSegmentedControl()
     /// The site's cookies and data. The clear button is on only when there is some.
     private var records: [WKWebsiteDataRecord] = []
     private static let width: CGFloat = 240
@@ -79,6 +81,7 @@ private final class SitePanel: NSViewController {
             stack.addArrangedSubview(switchRow(symbol, title, on: allowed, tag: device == .camera ? 0 : 1))
         }
         stack.addArrangedSubview(switchRow("speaker.wave.2", "Sound", on: !tab.isMuted, tag: 2))
+        stack.addArrangedSubview(zoomRow())
         stack.addArrangedSubview(Self.separator())
         stack.addArrangedSubview(clearRow())
         view = stack
@@ -107,13 +110,35 @@ private final class SitePanel: NSViewController {
         toggle.tag = tag
         toggle.target = self
         toggle.action = #selector(switchChanged(_:))
+        return Self.row(symbol, title, controls: [toggle])
+    }
+
+    private func zoomRow() -> NSView {
+        zoomButtons.segmentCount = 2
+        zoomButtons.trackingMode = .momentary
+        zoomButtons.setImage(NSImage(systemSymbolName: "minus", accessibilityDescription: "Zoom Out"), forSegment: 0)
+        zoomButtons.setImage(NSImage(systemSymbolName: "plus", accessibilityDescription: "Zoom In"), forSegment: 1)
+        zoomButtons.setToolTip("Zoom Out", forSegment: 0)
+        zoomButtons.setToolTip("Zoom In", forSegment: 1)
+        zoomButtons.refusesFirstResponder = true
+        zoomButtons.target = self
+        zoomButtons.action = #selector(zoomClicked)
+        zoomLabel.font = .monospacedDigitSystemFont(ofSize: NSFont.systemFontSize, weight: .regular)
+        zoomLabel.textColor = .secondaryLabelColor
+        refreshZoom()
+        // Cmd+= and Cmd+- work while the panel is open.
+        NotificationCenter.default.addObserver(self, selector: #selector(refreshZoom), name: PageZoom.didChange, object: nil)
+        return Self.row("plus.magnifyingglass", "Zoom", controls: [zoomLabel, zoomButtons])
+    }
+
+    private static func row(_ symbol: String, _ title: String, controls: [NSView]) -> NSView {
         let icon = NSImageView(image: NSImage(systemSymbolName: symbol, accessibilityDescription: nil)!)
         icon.symbolConfiguration = .init(pointSize: 14, weight: .regular)
         icon.contentTintColor = .secondaryLabelColor
         icon.widthAnchor.constraint(equalToConstant: 20).isActive = true
-        let row = NSStackView(views: [icon, NSTextField(labelWithString: title), NSView(), toggle])
+        let row = NSStackView(views: [icon, NSTextField(labelWithString: title), NSView()] + controls)
         row.spacing = 8
-        row.widthAnchor.constraint(equalToConstant: Self.width).isActive = true
+        row.widthAnchor.constraint(equalToConstant: width).isActive = true
         row.heightAnchor.constraint(equalToConstant: 28).isActive = true
         return row
     }
@@ -178,6 +203,16 @@ private final class SitePanel: NSViewController {
         default:
             tab.isMuted = !on
         }
+    }
+
+    @objc private func zoomClicked() {
+        tab.changeZoom(larger: zoomButtons.selectedSegment == 1)
+    }
+
+    @objc private func refreshZoom() {
+        zoomLabel.stringValue = PageZoom.label(tab.zoom)
+        zoomButtons.setEnabled(tab.zoom > PageZoom.steps.first!, forSegment: 0)
+        zoomButtons.setEnabled(tab.zoom < PageZoom.steps.last!, forSegment: 1)
     }
 
     @objc private func showCertificate() {

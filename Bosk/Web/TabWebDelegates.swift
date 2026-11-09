@@ -89,6 +89,9 @@ extension Tab: WKNavigationDelegate {
 
     func webView(_ webView: WKWebView, didCommit navigation: WKNavigation!) {
         framesWithUnsentInput.removeAll()
+        // At commit, not when the URL changes: until then the old page is on screen,
+        // and a link can still become a download.
+        applyZoom()
     }
 
     @objc(_webView:renderingProgressDidChange:)

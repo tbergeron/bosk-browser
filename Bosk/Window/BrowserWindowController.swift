@@ -59,12 +59,8 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate {
             topBar.setAccessoryViews([UpdateButton(), addToBoskButton, siteButton, adBlockerButton, TopBarDivider(), extensionActions, DownloadsButton()])
         }
         ExtensionManager.shared.addObserver(self) { [weak self] in self?.extensionActions.reload() }
-        NotificationCenter.default.addObserver(forName: PageZoom.didChangeDefault, object: nil, queue: .main) { [weak self] _ in
-            MainActor.assumeIsolated {
-                for tab in self?.store.allTabs ?? [] where tab.zoomOverride == nil {
-                    tab.webView?.pageZoom = PageZoom.defaultZoom
-                }
-            }
+        NotificationCenter.default.addObserver(forName: PageZoom.didChange, object: nil, queue: .main) { [weak self] _ in
+            MainActor.assumeIsolated { self?.store.allTabs.forEach { $0.applyZoom() } }
         }
         NotificationCenter.default.addObserver(forName: Preferences.hidesSidebarDidChange, object: nil, queue: .main) { [weak self] _ in
             MainActor.assumeIsolated { self?.rootView.setSidebarHidden(Preferences.hidesSidebar) }
@@ -285,14 +281,11 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate {
         operation.view?.frame = webView.bounds
         operation.runModal(for: window, delegate: nil, didRun: nil, contextInfo: nil)
     }
-    @objc func zoomIn(_ sender: Any?) { changeZoom(larger: true) }
-    @objc func zoomOut(_ sender: Any?) { changeZoom(larger: false) }
-    @objc func actualSize(_ sender: Any?) { store.selectedTab?.zoomOverride = nil }
-
-    private func changeZoom(larger: Bool) {
+    @objc func zoomIn(_ sender: Any?) { store.selectedTab?.changeZoom(larger: true) }
+    @objc func zoomOut(_ sender: Any?) { store.selectedTab?.changeZoom(larger: false) }
+    @objc func actualSize(_ sender: Any?) {
         guard let tab = store.selectedTab else { return }
-        let next = PageZoom.next(after: tab.zoomOverride ?? PageZoom.defaultZoom, larger: larger)
-        tab.zoomOverride = abs(next - PageZoom.defaultZoom) < 0.001 ? nil : next
+        PageZoom.set(nil, for: tab.url, isPrivate: tab.isPrivate)
     }
 
     @objc func searchTabs(_ sender: Any?) { showCommandBar(target: .newTab, mode: .tabs) }

@@ -24,7 +24,7 @@ final class ExtensionActionsView: NSView {
         listButton.symbolConfiguration = .init(pointSize: 14, weight: .medium)
         listButton.isBordered = false
         listButton.refusesFirstResponder = true
-        listButton.contentTintColor = .secondaryLabelColor
+        listButton.contentTintColor = .topBarIcon
         listButton.toolTip = "Extensions"
         listButton.target = self
         listButton.action = #selector(showList)

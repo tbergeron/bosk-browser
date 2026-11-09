@@ -1,5 +1,13 @@
 import AppKit
 
+extension NSColor {
+    /// The symbols in the top bar: brighter than `secondaryLabelColor`, less bright than `labelColor`.
+    /// Not `labelColor.withAlphaComponent`: that color stays white in light mode.
+    static let topBarIcon = NSColor(name: nil) { appearance in
+        (appearance.bestMatch(from: [.aqua, .darkAqua]) == .darkAqua ? NSColor.white : .black).withAlphaComponent(0.75)
+    }
+}
+
 /// Back, forward, reload, and the page address. Click the address to edit it.
 @MainActor
 final class TopBar: NSView {
@@ -47,7 +55,7 @@ final class TopBar: NSView {
         // A click does not take the keyboard focus from the page. With keyboard navigation on,
         // the button would keep a focus ring, and Space would click it again.
         button.refusesFirstResponder = true
-        button.contentTintColor = .secondaryLabelColor
+        button.contentTintColor = .topBarIcon
         button.symbolConfiguration = .init(pointSize: 14, weight: .medium)
         button.toolTip = label
         return button
@@ -65,6 +73,10 @@ final class TopBar: NSView {
         self.tab = tab
         backButton.isEnabled = tab?.canGoBack ?? false
         forwardButton.isEnabled = tab?.canGoForward ?? false
+        // AppKit makes the disabled look from the tint, so a brighter tint would also brighten disabled arrows.
+        for button in [backButton, forwardButton] {
+            button.contentTintColor = button.isEnabled ? .topBarIcon : .secondaryLabelColor
+        }
         let loading = tab?.isLoading ?? false
         reloadButton.image = NSImage(systemSymbolName: loading ? "xmark" : "arrow.clockwise",
                                      accessibilityDescription: loading ? "Stop" : "Reload")

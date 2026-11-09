@@ -154,8 +154,8 @@ private struct GeneralPane: View {
                 }
                 .pickerStyle(.segmented).labelsHidden().fixedSize()
             }
-            SettingsRow(title: "Page zoom", subtitle: "⌘+ and ⌘− change one tab. ⌘0 goes back to this default.") {
-                Picker("Page zoom", selection: Binding(get: { model.defaultZoom },
+            SettingsRow(title: "Default page zoom", subtitle: "⌘+ and ⌘− change one site. ⌘0 goes back to this default.") {
+                Picker("Default page zoom", selection: Binding(get: { model.defaultZoom },
                                                        set: { model.setDefaultZoom($0) })) {
                     ForEach(PageZoom.defaultChoices, id: \.self) { Text(PageZoom.label($0)).tag($0) }
                 }

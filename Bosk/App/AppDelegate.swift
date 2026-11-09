@@ -154,6 +154,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
         privateStore = nil
         ContentBlocker.endPrivateSession()
         PermissionMemory.privateWindows.forgetAll()
+        PageZoom.endPrivateSession()
         ReaderMode.privateArticles.removeAll()
     }
 

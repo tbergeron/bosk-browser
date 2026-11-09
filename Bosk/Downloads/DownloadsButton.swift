@@ -14,7 +14,7 @@ final class DownloadsButton: NSButton {
         symbolConfiguration = .init(pointSize: 14, weight: .medium)
         isBordered = false
         refusesFirstResponder = true
-        contentTintColor = .secondaryLabelColor
+        contentTintColor = .topBarIcon
         toolTip = "Downloads"
         target = self
         action = #selector(toggle)
@@ -32,7 +32,7 @@ final class DownloadsButton: NSButton {
     private func refresh() {
         isHidden = DownloadManager.shared.items.isEmpty
         superview?.needsLayout = true
-        contentTintColor = DownloadManager.shared.hasRunningDownloads ? .controlAccentColor : .secondaryLabelColor
+        contentTintColor = DownloadManager.shared.hasRunningDownloads ? .controlAccentColor : .topBarIcon
         let count = DownloadManager.shared.items.count
         if count > itemCount { bounce() }
         itemCount = count
