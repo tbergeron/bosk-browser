@@ -18,8 +18,10 @@ final class TopBar: NSView {
         didSet { needsLayout = true }
     }
 
-    private let backButton = TopBar.makeButton("chevron.left", label: "Back", action: #selector(BrowserWindowController.browserBack(_:)))
-    private let forwardButton = TopBar.makeButton("chevron.right", label: "Forward", action: #selector(BrowserWindowController.browserForward(_:)))
+    private let backButton = TopBar.makeButton("chevron.left", label: "Back", action: #selector(BrowserWindowController.browserBack(_:)),
+                                               type: HistoryListButton.self)
+    private let forwardButton = TopBar.makeButton("chevron.right", label: "Forward", action: #selector(BrowserWindowController.browserForward(_:)),
+                                                  type: HistoryListButton.self)
     private let reloadButton = TopBar.makeButton("arrow.clockwise", label: "Reload", action: #selector(BrowserWindowController.browserReload(_:)))
     private let addressField = NSTextField(labelWithString: "")
     private let progressLayer = CALayer()
@@ -38,6 +40,8 @@ final class TopBar: NSView {
         addressField.addGestureRecognizer(NSClickGestureRecognizer(target: self, action: #selector(addressClicked)))
         addressField.menu = NSMenu()
         addressField.menu?.delegate = self
+        backButton.historyMenu = { [weak self] in self?.historyMenu(forward: false) }
+        forwardButton.historyMenu = { [weak self] in self?.historyMenu(forward: true) }
         progressLayer.backgroundColor = NSColor.controlAccentColor.cgColor
         progressLayer.opacity = 0
         separator.backgroundColor = NSColor.separatorColor.cgColor
@@ -48,9 +52,10 @@ final class TopBar: NSView {
     @available(*, unavailable)
     required init?(coder: NSCoder) { fatalError("init(coder:) is not used") }
 
-    private static func makeButton(_ symbol: String, label: String, action: Selector) -> NSButton {
+    private static func makeButton<B: NSButton>(_ symbol: String, label: String, action: Selector,
+                                                type: B.Type = NSButton.self) -> B {
         let image = NSImage(systemSymbolName: symbol, accessibilityDescription: label)!
-        let button = NSButton(image: image, target: nil, action: action)
+        let button = B(image: image, target: nil, action: action)
         button.isBordered = false
         // A click does not take the keyboard focus from the page. With keyboard navigation on,
         // the button would keep a focus ring, and Space would click it again.
@@ -159,6 +164,60 @@ final class TopBar: NSView {
     }
 
     @objc private func addressClicked() { onAddressClick?() }
+
+    /// The tab's 10 nearest earlier (or later) pages, nearest first. Nil when there is no such page.
+    private func historyMenu(forward: Bool) -> NSMenu? {
+        guard let webView = tab?.webView else { return nil }
+        let list = webView.backForwardList
+        let entries = forward ? Array(list.forwardList.prefix(10)) : list.backList.suffix(10).reversed()
+        guard !entries.isEmpty else { return nil }
+        let menu = NSMenu()
+        for entry in entries {
+            let title = entry.title.flatMap { $0.isEmpty ? nil : $0 } ?? entry.url.absoluteString
+            // A long address would make the menu as wide as the screen.
+            let item = ClosureMenuItem(title.count > 60 ? title.prefix(60) + "…" : title) { [weak webView] in
+                _ = webView?.go(to: entry)
+            }
+            let icon = (FaviconStore.shared.cachedIcon(for: entry.url)
+                ?? NSImage(systemSymbolName: "globe", accessibilityDescription: nil))?.copy() as? NSImage
+            icon?.size = NSSize(width: 16, height: 16)
+            item.image = icon
+            menu.addItem(item)
+        }
+        return menu
+    }
+}
+
+/// The Back or Forward button. Hold it, or right-click it, to see the pages in that direction and go to one of them.
+final class HistoryListButton: NSButton {
+    var historyMenu: (() -> NSMenu?)?
+
+    override func mouseDown(with event: NSEvent) {
+        if event.modifierFlags.contains(.control), showHistoryMenu() { return }
+        // A press released before this time is a click. A longer press opens the list.
+        // The release stays in the queue (dequeue: false), so super gets it and clicks.
+        isHighlighted = true
+        let released = window?.nextEvent(matching: .leftMouseUp, until: Date(timeIntervalSinceNow: 0.5),
+                                         inMode: .eventTracking, dequeue: false) != nil
+        isHighlighted = false
+        if !released, showHistoryMenu() { return }
+        super.mouseDown(with: event)
+    }
+
+    override func rightMouseDown(with event: NSEvent) {
+        if !showHistoryMenu() { super.rightMouseDown(with: event) }
+    }
+
+    override func accessibilityPerformShowMenu() -> Bool { showHistoryMenu() }
+
+    /// Opens the list below the button, as in other browsers.
+    private func showHistoryMenu() -> Bool {
+        guard isEnabled, let menu = historyMenu?() else { return false }
+        isHighlighted = true
+        menu.popUp(positioning: nil, at: NSPoint(x: 0, y: isFlipped ? bounds.maxY + 4 : bounds.minY - 4), in: self)
+        isHighlighted = false
+        return true
+    }
 }
 
 /// A short vertical line between groups of top bar buttons.
