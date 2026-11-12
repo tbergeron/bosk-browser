@@ -4,6 +4,13 @@ import WebKit
 /// WKWebView with Bosk's context menu: "New Window" items open tabs, and the page menu
 /// has Show Reader.
 final class BoskWebView: WKWebView {
+    /// Set by the page menu's "Open … in New Tab" items. createWebViewWith reads it (and clears it)
+    /// and does not select that tab. The navigation action does not tell a menu item from a click.
+    var opensBackgroundTab = false
+    /// WebKit's own target and action for those items. All of them use the same pair.
+    private var menuTarget: AnyObject?
+    private var menuAction: Selector?
+
     override func willOpenMenu(_ menu: NSMenu, with event: NSEvent) {
         super.willOpenMenu(menu, with: event)
         // "Open Link" does the same as a click on the link.
@@ -15,8 +22,12 @@ final class BoskWebView: WKWebView {
             case "WKMenuItemIdentifierOpenImageInNewWindow": item.title = "Open Image in New Tab"
             case "WKMenuItemIdentifierOpenMediaInNewWindow": item.title = "Open Video in New Tab"
             case "WKMenuItemIdentifierOpenFrameInNewWindow": item.title = "Open Frame in New Tab"
-            default: break
+            default: continue
             }
+            menuTarget = item.target
+            menuAction = item.action
+            item.target = self
+            item.action = #selector(openInBackgroundTab(_:))
         }
         // Show Reader goes in the page's own menu (it has Reload), not in link or image menus.
         if let tab = WebViewFactory.tab(for: self),
@@ -25,6 +36,13 @@ final class BoskWebView: WKWebView {
             menu.insertItem(reader, at: reload + 1)
         }
         // Extension items: WebKit adds them itself, with the clicked image or link.
+    }
+
+    /// Marks the next new tab as a background tab, then lets WebKit do the item's work.
+    @objc private func openInBackgroundTab(_ sender: NSMenuItem) {
+        guard let menuAction else { return }
+        opensBackgroundTab = true
+        NSApp.sendAction(menuAction, to: menuTarget, from: sender)
     }
 
     /// A tab switch, sleep or close takes the web view out of the window. If a password field has

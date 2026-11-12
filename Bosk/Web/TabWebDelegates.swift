@@ -177,7 +177,11 @@ extension Tab: WKUIDelegate {
         let popup = WebViewFactory.makeWebView(configuration: configuration)
         let tab = Tab(adopting: popup)
         tab.opener = self
-        store?.insert(tab, after: self, select: true)
+        // The page menu's "Open … in New Tab" opens a background tab, like a Cmd-click.
+        let boskWebView = webView as? BoskWebView
+        let inBackground = boskWebView?.opensBackgroundTab == true
+        boskWebView?.opensBackgroundTab = false
+        store?.insert(tab, after: self, select: !inBackground)
         return popup
     }
 
