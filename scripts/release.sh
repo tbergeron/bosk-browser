@@ -81,8 +81,31 @@ for item in Versions/B/XPCServices/Installer.xpc Versions/B/XPCServices/Download
             Versions/B/Autoupdate Versions/B/Updater.app .; do
   codesign -f -s "$DEVELOPER_ID" -o runtime --timestamp --preserve-metadata=entitlements "$sparkle/$item"
 done
-codesign -f -s "$DEVELOPER_ID" -o runtime --timestamp \
-  --entitlements "$root/Bosk/Resources/Bosk.entitlements" "$app"
+
+# The passkey entitlement lets WebKit use passkeys and the Sign in with Apple sheet on every site.
+# Apple restricts it: macOS refuses to open the app unless the app contains a Developer ID profile
+# that allows it, made for the certificate that signs the app. Apple approved com.brainpad.bosk
+# only, so Debug builds do not get it.
+echo "== Add the provisioning profile"
+profile="$root/scripts/Bosk_Developer_ID.provisionprofile"
+pb=/usr/libexec/PlistBuddy
+signing=$(mktemp -d)
+security cms -D -i "$profile" > "$signing/profile.plist"
+[[ "$($pb -c "Print :Entitlements:com.apple.developer.web-browser.public-key-credential" "$signing/profile.plist")" == true ]] \
+  || { echo "$profile does not allow the passkey entitlement." >&2; exit 1; }
+profile_cert=$(plutil -extract DeveloperCertificates.0 raw -o - "$signing/profile.plist" | base64 -D | shasum -a 1 | cut -d " " -f 1 | tr a-f A-F)
+security find-identity -v -p codesigning | grep -q "$profile_cert \"$DEVELOPER_ID\"" \
+  || { echo "$profile is for a different certificate than $DEVELOPER_ID. Make a new profile." >&2; exit 1; }
+cp "$profile" "$app/Contents/embedded.provisionprofile"
+entitlements="$signing/Bosk.entitlements"
+cp "$root/Bosk/Resources/Bosk.entitlements" "$entitlements"
+for key in com.apple.application-identifier com.apple.developer.team-identifier; do
+  $pb -c "Add :$key string $($pb -c "Print :Entitlements:$key" "$signing/profile.plist")" "$entitlements"
+done
+$pb -c "Add :com.apple.developer.web-browser.public-key-credential bool true" "$entitlements"
+
+codesign -f -s "$DEVELOPER_ID" -o runtime --timestamp --entitlements "$entitlements" "$app"
+rm -rf "$signing"
 
 echo "== Check the signature"
 codesign --verify --deep --strict --verbose=2 "$app"
@@ -90,6 +113,8 @@ codesign -dv "$app" 2>&1 | grep -E "Authority=Developer ID Application|flags=.*r
   || { echo "The app is not signed with Developer ID and the hardened runtime." >&2; exit 1; }
 ! codesign -d --entitlements - "$app" 2>&1 | grep -q get-task-allow \
   || { echo "The app has the get-task-allow entitlement; notarization refuses it." >&2; exit 1; }
+codesign -d --entitlements - "$app" 2>&1 | grep -q web-browser.public-key-credential \
+  || { echo "The app does not have the passkey entitlement." >&2; exit 1; }
 
 echo "== Notarize the app"
 ditto -c -k --keepParent "$app" "$out/Bosk-notarize.zip"

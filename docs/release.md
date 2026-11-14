@@ -28,6 +28,14 @@ These steps need your Apple Developer account and your keychain, so they are not
 5. **Homebrew tap.** Clone `tbergeron/homebrew-bosk` next to this repository (or set
    `HOMEBREW_TAP` to its folder). It has the cask, `Casks/bosk.rb`. Users install with
    `brew install --cask tbergeron/bosk/bosk`.
+6. **Provisioning profile.** Passkeys need the restricted entitlement
+   `com.apple.developer.web-browser.public-key-credential` (Apple approved it for
+   `com.brainpad.bosk` on 2026-11-13). The script puts
+   `scripts/Bosk_Developer_ID.provisionprofile` in the app. The profile is valid only for the
+   Developer ID certificate that it was made for. When you renew the certificate, make a new
+   Developer ID profile for `com.brainpad.bosk` at developer.apple.com > Certificates, IDs &
+   Profiles > Profiles, and replace the file. The script stops if the profile and the
+   certificate do not agree. Without a correct profile, macOS does not open the app.
 
 ## Each release
 
@@ -41,7 +49,8 @@ DEVELOPER_ID="Developer ID Application: Your Name (TEAMID)" NOTARY_PROFILE=bosk-
 The script:
 1. runs the BoskCore tests;
 2. builds Release with the version and build number;
-3. signs with Developer ID and the hardened runtime, then checks the signature;
+3. puts the provisioning profile in the app, signs with Developer ID, the hardened runtime and
+   the passkey entitlement, then checks the signature;
 4. notarizes and staples the app;
 5. makes, signs, notarizes and staples the DMG;
 6. updates `appcast.xml`;
