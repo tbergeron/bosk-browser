@@ -57,6 +57,8 @@ enum MainMenu {
         viewMenu.addItem(item("Toggle Reader Mode", #selector(BrowserWindowController.toggleReader(_:)), "R"))
         viewMenu.addItem(withTitle: "Allow Ads on This Site", action: #selector(BrowserWindowController.toggleAdsOnSite(_:)),
                          keyEquivalent: "")
+        viewMenu.addItem(withTitle: "Toggle Picture in Picture",
+                         action: #selector(BrowserWindowController.togglePictureInPicture(_:)), keyEquivalent: "")
         viewMenu.addItem(.separator())
         viewMenu.addItem(item("Zoom In", #selector(BrowserWindowController.zoomIn(_:)), "="))
         viewMenu.addItem(item("Zoom In", #selector(BrowserWindowController.zoomIn(_:)), "+", alternate: true))

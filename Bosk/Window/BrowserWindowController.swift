@@ -313,6 +313,11 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate {
         ReaderMode.toggle(in: tab)
     }
 
+    @objc func togglePictureInPicture(_ sender: Any?) {
+        guard let webView = store.selectedTab?.webView else { return }
+        PictureInPicture.toggle(in: webView)
+    }
+
     @objc func toggleWebInspector(_ sender: Any?) {
         guard let webView = store.selectedTab?.webView else { return }
         WebInspector.toggle(in: webView)
@@ -417,6 +422,9 @@ extension BrowserWindowController: NSMenuItemValidation {
         if menuItem.action == #selector(toggleReader(_:)) {
             return store.selectedTab.flatMap(ReaderMode.menuItem) != nil
         }
+        if menuItem.action == #selector(togglePictureInPicture(_:)) {
+            return store.selectedTab?.webView != nil
+        }
         if menuItem.action == #selector(toggleWebInspector(_:)) {
             guard let webView = store.selectedTab?.webView, WebInspector.isAvailable(for: webView) else { return false }
             menuItem.title = WebInspector.isVisible(in: webView) ? "Hide Web Inspector" : "Show Web Inspector"
@@ -484,6 +492,7 @@ extension BrowserWindowController: TabStoreDelegate {
 
     func tabStore(_ store: TabStore, didSelect tab: Tab?, previous: Tab?) {
         performanceSignposter.emitEvent("Tab switch")
+        PictureInPicture.tabDidChange(from: previous, to: tab)
         container.show(tab?.webView)
         // Clear the old tab's link, so the same link shows again when the user comes back.
         previous?.hoveredLink = nil

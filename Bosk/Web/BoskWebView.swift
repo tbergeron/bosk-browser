@@ -88,6 +88,52 @@ enum WebInspector {
     }
 }
 
+/// Picture in Picture for page videos. When the user leaves a tab with a playing video, the video
+/// goes into Picture in Picture; when the user comes back, it goes back into the page. The scripts
+/// run in Bosk's world, so the page cannot see or change the flag for a video that Bosk popped out.
+@MainActor
+enum PictureInPicture {
+    /// The largest video that has a picture. Muted videos are often page backgrounds, so the
+    /// automatic pop-out uses only a playing video with sound.
+    private static let findVideo = """
+        const largest = (playingWithSound) => [...document.querySelectorAll('video')]
+          .filter(v => v.readyState >= 2 && v.videoWidth > 0 && !v.disablePictureInPicture &&
+            (!playingWithSound || (!v.paused && !v.ended && !v.muted && v.volume > 0)))
+          .map(v => { const r = v.getBoundingClientRect(); return { v, area: r.width * r.height }; })
+          .sort((a, b) => b.area - a.area)[0]?.v;
+        """
+
+    static func tabDidChange(from previous: Tab?, to tab: Tab?) {
+        run("""
+            if (document.pictureInPictureElement) return;
+            const video = largest(true);
+            if (!video) return;
+            await video.requestPictureInPicture();
+            window.boskPoppedOut = true;
+            """, in: previous?.webView)
+        run("""
+            if (!window.boskPoppedOut) return;
+            window.boskPoppedOut = false;
+            if (document.pictureInPictureElement) await document.exitPictureInPicture();
+            """, in: tab?.webView)
+    }
+
+    /// From View > Toggle Picture in Picture. A video that the user pops out stays out on a tab switch.
+    static func toggle(in webView: WKWebView) {
+        run("""
+            window.boskPoppedOut = false;
+            if (document.pictureInPictureElement) return await document.exitPictureInPicture();
+            await (largest(true) ?? largest(false))?.requestPictureInPicture();
+            """, in: webView)
+    }
+
+    /// The main frame only. Videos in other frames do not pop out.
+    private static func run(_ body: String, in webView: WKWebView?) {
+        webView?.callAsyncJavaScript(findVideo + "try {" + body + "} catch {}", arguments: [:], in: nil,
+                                     in: WebViewFactory.scriptWorld, completionHandler: nil)
+    }
+}
+
 /// WebKit has no public event for a page's first content, so this uses the private rendering progress
 /// events. Two covers use them: in Dark Mode a cover view keeps a new web view at the dark window color,
 /// not white, until its first page has content; and a woken tab keeps its picture until the page draws.

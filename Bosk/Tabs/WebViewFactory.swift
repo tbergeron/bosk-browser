@@ -78,6 +78,10 @@ enum WebViewFactory {
         configuration.applicationNameForUserAgent = Defaults.userAgentApplicationName
         configuration.setURLSchemeHandler(ReaderMode.schemeHandler, forURLScheme: ReaderPage.scheme)
         configuration.preferences.isElementFullscreenEnabled = true
+        // Private, and off by default on macOS: without it, videos cannot go into Picture in Picture.
+        if configuration.preferences.responds(to: NSSelectorFromString("_setAllowsPictureInPictureMediaPlayback:")) {
+            configuration.preferences.setValue(true, forKey: "allowsPictureInPictureMediaPlayback")
+        }
         // Private, as in Safari's Develop menu: the Web Inspector opens only with this on.
         // It also adds Inspect Element to the page's menu.
         if configuration.preferences.responds(to: NSSelectorFromString("_setDeveloperExtrasEnabled:")) {
