@@ -208,6 +208,11 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate {
         guard let popover = action.popupPopover else { return }
         let anchor = extensionActions.button(for: context) ?? topBar
         shownPopup = (context, popover)
+        // WebKit sets the popover's appearance from the page's color scheme when it loads
+        // (WebExtensionAction::detectPopoverColorScheme), before a page like Bitwarden's applies
+        // its theme: it picks light, the page then sees prefers-color-scheme: light and stays light.
+        // Pages see the window's appearance, as in Chrome.
+        action.popupWebView?.appearance = anchor.effectiveAppearance
         popover.show(relativeTo: anchor.bounds, of: anchor, preferredEdge: .minY)
     }
 
