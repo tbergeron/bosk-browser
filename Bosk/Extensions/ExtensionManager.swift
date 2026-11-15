@@ -47,6 +47,7 @@ final class ExtensionManager: NSObject {
     override private init() {
         super.init()
         controller.delegate = self
+        WKWebExtension.MatchPattern.registerCustomURLScheme("chrome-extension")
         try? FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
         keepAlive.tolerance = 3
     }
@@ -226,6 +227,10 @@ final class ExtensionManager: NSObject {
         let context = WKWebExtensionContext(for: webExtension)
         // A stable ID keeps the extension's storage and its chrome-extension:// origin.
         context.uniqueIdentifier = record.id
+        // WebKit's default is webkit-extension://<new UUID each launch>. Extensions only know
+        // the chrome-, moz- and safari-web-extension schemes: Bitwarden's inline menu frame
+        // drops its menu for any other one.
+        if let base = URL(string: "chrome-extension://\(record.id.lowercased())/") { context.baseURL = base }
         context.grantedPermissions = Self.permissions(record.grantedPermissions)
         context.deniedPermissions = Self.permissions(record.deniedPermissions)
         // Each granted pattern adds a copy of the content scripts to each web process (MatchPatternCover).
