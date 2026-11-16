@@ -231,6 +231,7 @@ final class ExtensionManager: NSObject {
         // the chrome-, moz- and safari-web-extension schemes: Bitwarden's inline menu frame
         // drops its menu for any other one.
         if let base = URL(string: "chrome-extension://\(record.id.lowercased())/") { context.baseURL = base }
+        Self.keepSafeFromTrackingPrevention(context.baseURL)
         context.grantedPermissions = Self.permissions(record.grantedPermissions)
         context.deniedPermissions = Self.permissions(record.deniedPermissions)
         // Each granted pattern adds a copy of the content scripts to each web process (MatchPatternCover).
@@ -246,6 +247,19 @@ final class ExtensionManager: NSObject {
         if contexts[record.id] == nil, loadsThisRun.contains(record.id) { loadedBefore.insert(record.id) }
         loadsThisRun.insert(record.id)
         contexts[record.id] = context
+    }
+
+    /// WebKit's tracking prevention (ITP) records the extension's host as a domain without user
+    /// interaction. A few seconds after launch it deletes that domain's script data (the worker
+    /// registration too) and clears each new registration until Bosk quits: the popup only spins.
+    /// The host is stable since chrome-extension:// (2026-11-15), so this occurs on each launch.
+    /// A logged user interaction keeps the domain out of that list.
+    private static func keepSafeFromTrackingPrevention(_ url: URL) {
+        let store = WKWebsiteDataStore.default()
+        let selector = NSSelectorFromString("_logUserInteraction:completionHandler:")
+        guard store.responds(to: selector) else { return NSLog("Bosk: WebKit has no _logUserInteraction") }
+        let done: @convention(block) () -> Void = {}
+        _ = store.perform(selector, with: url, with: unsafeBitCast(done, to: AnyObject.self))
     }
 
     // MARK: Restarting (ported from Search by Office Commun, MIT License)
