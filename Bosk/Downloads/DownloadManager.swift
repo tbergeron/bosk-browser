@@ -49,6 +49,17 @@ final class DownloadManager: NSObject, WKDownloadDelegate {
         changed()
     }
 
+    /// Stops a running download, removes its partial file, and takes it off the list.
+    /// WebKit keeps the partial file after a cancel, so Bosk removes it.
+    func cancel(_ item: Item) {
+        let destination = item.destination
+        item.download.cancel { _ in
+            if let destination { try? FileManager.default.removeItem(at: destination) }
+        }
+        items.removeAll { $0 === item }
+        changed()
+    }
+
     private func changed() {
         observers.values.forEach { $0() }
     }

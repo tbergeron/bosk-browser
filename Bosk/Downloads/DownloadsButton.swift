@@ -100,7 +100,8 @@ private final class DownloadsList: NSViewController {
             bar.isIndeterminate = item.download.progress.totalUnitCount <= 0
             bar.doubleValue = item.download.progress.fractionCompleted * 100
             bar.widthAnchor.constraint(equalToConstant: 100).isActive = true
-            status = bar
+            let path = item.destination?.path ?? ""
+            status = NSStackView(views: [bar, smallButton("xmark", "Cancel Download", #selector(DownloadActions.cancel(_:)), path)])
         case .finished:
             let path = item.destination?.path ?? ""
             let buttons = [
@@ -141,5 +142,11 @@ private final class DownloadActions: NSObject {
         guard let path = sender.identifier?.rawValue, !path.isEmpty,
               let item = DownloadManager.shared.items.first(where: { $0.destination?.path == path }) else { return }
         DownloadManager.shared.delete(item)
+    }
+
+    @objc func cancel(_ sender: NSButton) {
+        guard let path = sender.identifier?.rawValue, !path.isEmpty,
+              let item = DownloadManager.shared.items.first(where: { $0.destination?.path == path }) else { return }
+        DownloadManager.shared.cancel(item)
     }
 }
