@@ -31,6 +31,8 @@ enum Defaults {
     /// Debug builds only: replaces the idle time chosen in Settings (Preferences.tabSleepAfter).
     static let tabSleepIdleLimitOverride: TimeInterval? = debugOverride("BoskSleepAfterSeconds")
     static let tabSleepCheckInterval: TimeInterval = min(60, (tabSleepIdleLimitOverride ?? 60 * 60) / 2)
+    /// Debug builds only: replaces `SleepPolicy.memoryLimit`, in MB, to test the limit with normal pages.
+    static let memoryLimitOverride: Double? = debugOverride("BoskMemoryLimitMB")
     /// Reloads of the selected tab after its page process stops, in one minute.
     static let crashReloadLimit = 3
     /// Saved reader articles older than this are deleted at launch.

@@ -1,5 +1,5 @@
+import AppKit
 import BoskCore
-import Foundation
 import WebKit
 
 /// Puts idle tabs to sleep (see `SleepPolicy`). It checks on a timer, and at once when
@@ -19,7 +19,10 @@ final class TabSleepManager {
 
     func start() {
         timer = Timer.scheduledTimer(withTimeInterval: Defaults.tabSleepCheckInterval, repeats: true) { _ in
-            MainActor.assumeIsolated { TabSleepManager.shared.check(pressure: .normal) }
+            MainActor.assumeIsolated {
+                TabSleepManager.shared.enforceMemoryLimit()
+                TabSleepManager.shared.check(pressure: .normal)
+            }
         }
         timer?.tolerance = Defaults.tabSleepCheckInterval / 4
         let source = DispatchSource.makeMemoryPressureSource(eventMask: [.warning, .critical], queue: .main)
@@ -80,6 +83,59 @@ final class TabSleepManager {
                 // The user may have selected the tab while the media checks ran.
                 guard let tab = tabsByID[id], tab !== tab.store?.selectedTab else { continue }
                 tab.sleep()
+            }
+        }
+    }
+
+    /// Tab ID → the web process the user chose to keep after the memory warning. A new process warns again.
+    private var ignoredMemoryWarnings: [UUID: Int32] = [:]
+
+    /// Stops pages that run out of control (`SleepPolicy.memoryLimit`). It runs also when tab sleep
+    /// is off in Settings: a page that fills memory and swap slows the whole Mac.
+    func enforceMemoryLimit() {
+        var tabsByID: [UUID: Tab] = [:]
+        var processTabs: [SleepPolicy.ProcessTab] = []
+        var footprints: [Int32: UInt64] = [:]
+        for store in storesProvider?() ?? [] {
+            for tab in store.allTabs {
+                guard let webView = tab.webView, let pid = WebProcessStats.pid(webView) else { continue }
+                tabsByID[tab.id] = tab
+                if footprints[pid] == nil { footprints[pid] = WebProcessStats.usage(pid)?.footprint ?? 0 }
+                processTabs.append(.init(id: tab.id, pid: pid, isSelected: tab === store.selectedTab,
+                                         isCapturing: webView.cameraCaptureState != .none
+                                             || webView.microphoneCaptureState != .none))
+            }
+        }
+        let limit = Defaults.memoryLimitOverride.map { UInt64($0) << 20 } ?? SleepPolicy.memoryLimit
+        let over = SleepPolicy.overMemoryLimit(processTabs, footprints: footprints, limit: limit)
+        for id in over.sleep { tabsByID[id]?.sleep() }
+        for id in over.warn {
+            guard let tab = tabsByID[id], let pid = tab.webView.flatMap({ WebProcessStats.pid($0) }),
+                  ignoredMemoryWarnings[id] != pid else { continue }
+            warn(tab, pid: pid, footprint: footprints[pid] ?? 0)
+        }
+    }
+
+    /// Asks the user about the tab on screen. Reload ends its web process; WebKit then reloads the
+    /// page in a new process (`webViewWebContentProcessDidTerminate`).
+    private func warn(_ tab: Tab, pid: Int32, footprint: UInt64) {
+        guard let window = tab.webView?.window, window.attachedSheet == nil else { return }
+        let alert = NSAlert()
+        let size = ByteCountFormatter.string(fromByteCount: Int64(footprint), countStyle: .memory)
+        alert.messageText = "This page uses \(size) of memory"
+        alert.informativeText = "\(tab.displayTitle) uses much more memory than a normal page, and it can slow down "
+            + "your Mac. Reload the page to give the memory back."
+        alert.addButton(withTitle: "Reload")
+        alert.addButton(withTitle: "Ignore")
+        alert.beginSheetModal(for: window) { [weak tab] response in
+            MainActor.assumeIsolated {
+                guard let tab else { return }
+                if response == .alertFirstButtonReturn {
+                    // The page can have a new process now: end only the one the user was asked about.
+                    if tab.webView.flatMap({ WebProcessStats.pid($0) }) == pid { kill(pid, SIGKILL) }
+                } else {
+                    TabSleepManager.shared.ignoredMemoryWarnings[tab.id] = pid
+                }
             }
         }
     }

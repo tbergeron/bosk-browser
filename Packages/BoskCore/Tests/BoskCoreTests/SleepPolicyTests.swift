@@ -86,4 +86,50 @@ struct SleepPolicyTests {
         // The media check needs all the tabs that could be the one.
         #expect(SleepPolicy.idleTabs(tabs, now: now, idleLimit: hour, pressure: .warning) == [tabs[1].id, tabs[2].id])
     }
+
+    // MARK: Memory limit
+
+    let gb: UInt64 = 1 << 30
+
+    @Test("A background tab whose process is above 4 GB sleeps, so a runaway page cannot fill memory and swap")
+    func runawayBackgroundTabSleeps() {
+        let runaway = SleepPolicy.ProcessTab(id: UUID(), pid: 10)
+        let normal = SleepPolicy.ProcessTab(id: UUID(), pid: 11)
+        let result = SleepPolicy.overMemoryLimit([runaway, normal], footprints: [10: 44 * gb, 11: 2 * gb])
+        #expect(result.sleep == [runaway.id])
+        #expect(result.warn.isEmpty)
+    }
+
+    @Test("A heavy page under the limit stays awake, because sleep reloads it and loses the user's place")
+    func underLimitStaysAwake() {
+        let heavy = SleepPolicy.ProcessTab(id: UUID(), pid: 10)
+        #expect(SleepPolicy.overMemoryLimit([heavy], footprints: [10: 4 * gb]) == ([], []))
+    }
+
+    @Test("The tab on screen is never put to sleep; the user gets a warning and decides")
+    func selectedTabGetsWarning() {
+        let selected = SleepPolicy.ProcessTab(id: UUID(), pid: 10, isSelected: true)
+        #expect(SleepPolicy.overMemoryLimit([selected], footprints: [10: 8 * gb]) == ([], [selected.id]))
+    }
+
+    @Test("Background tabs that share the process of the tab on screen stay awake: their sleep frees nothing")
+    func sharedProcessWithSelectedTab() {
+        let selected = SleepPolicy.ProcessTab(id: UUID(), pid: 10, isSelected: true)
+        let popup = SleepPolicy.ProcessTab(id: UUID(), pid: 10)
+        #expect(SleepPolicy.overMemoryLimit([selected, popup], footprints: [10: 8 * gb]) == ([], [selected.id]))
+    }
+
+    @Test("All background tabs of a runaway process sleep, so the process can end")
+    func sharedBackgroundProcessSleepsAll() {
+        let a = SleepPolicy.ProcessTab(id: UUID(), pid: 10)
+        let b = SleepPolicy.ProcessTab(id: UUID(), pid: 10)
+        #expect(SleepPolicy.overMemoryLimit([a, b], footprints: [10: 8 * gb]).sleep == [a.id, b.id])
+    }
+
+    @Test("A call in a runaway process keeps its tabs awake, because sleep would end the call")
+    func callKeepsProcessAwake() {
+        let call = SleepPolicy.ProcessTab(id: UUID(), pid: 10, isCapturing: true)
+        let other = SleepPolicy.ProcessTab(id: UUID(), pid: 10)
+        #expect(SleepPolicy.overMemoryLimit([call, other], footprints: [10: 8 * gb]) == ([], []))
+    }
 }

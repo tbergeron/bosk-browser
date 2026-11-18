@@ -202,6 +202,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
         window.performClose(sender)
     }
     @objc func showSettings(_ sender: Any?) { SettingsWindowController.shared.show() }
+    @objc func showTabManager(_ sender: Any?) { TabManagerWindowController.shared.show() }
 
     /// History > Clear History…. Same question as Settings > Privacy.
     @objc func clearHistory(_ sender: Any?) {

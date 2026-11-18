@@ -124,6 +124,8 @@ enum MainMenu {
         let windowMenu = NSMenu(title: "Window")
         windowMenu.addItem(withTitle: "Minimize", action: #selector(NSWindow.performMiniaturize(_:)), keyEquivalent: "m")
         windowMenu.addItem(withTitle: "Zoom", action: #selector(NSWindow.performZoom(_:)), keyEquivalent: "")
+        windowMenu.addItem(.separator())
+        windowMenu.addItem(withTitle: "Tab Manager", action: #selector(AppDelegate.showTabManager(_:)), keyEquivalent: "")
         add(windowMenu, title: "Window", to: main)
         NSApp.windowsMenu = windowMenu
 

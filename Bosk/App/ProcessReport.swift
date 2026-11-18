@@ -5,7 +5,6 @@ import WebKit
 /// Debug builds only. Writes the process IDs of Bosk and its WebKit helper processes to
 /// ~/Library/Caches/Bosk/processes.json every 2 seconds, for scripts/measure-memory.sh.
 /// WebKit starts its helpers through launchd, so they are not child processes of Bosk.
-/// The `_…Identifier` properties are private WebKit API; they are read only in Debug builds.
 @MainActor
 enum ProcessReport {
     private static var timer: Timer?
@@ -35,9 +34,9 @@ enum ProcessReport {
 
     private static func write(_ stores: [TabStore]) {
         let webViews = stores.flatMap(\.allTabs).compactMap(\.webView)
-        let web = Set(webViews.compactMap { pid($0, "_webProcessIdentifier") })
-        let gpu = Set(webViews.compactMap { pid($0, "_gpuProcessIdentifier") })
-        let network = pid(WKWebsiteDataStore.default(), "_networkProcessIdentifier")
+        let web = Set(webViews.compactMap { WebProcessStats.pid($0) })
+        let gpu = Set(webViews.compactMap { WebProcessStats.pid($0, "_gpuProcessIdentifier") })
+        let network = WebProcessStats.pid(WKWebsiteDataStore.default(), "_networkProcessIdentifier")
         let report: [String: Any] = [
             "app": ProcessInfo.processInfo.processIdentifier,
             "web": web.sorted(),
@@ -61,12 +60,6 @@ enum ProcessReport {
         if let data = try? JSONSerialization.data(withJSONObject: report, options: [.sortedKeys]) {
             try? data.write(to: url, options: .atomic)
         }
-    }
-
-    private static func pid(_ object: NSObject, _ key: String) -> Int32? {
-        guard object.responds(to: NSSelectorFromString(key)),
-              let value = object.value(forKey: key) as? NSNumber, value.int32Value > 0 else { return nil }
-        return value.int32Value
     }
 }
 #endif

@@ -63,6 +63,43 @@ public enum SleepPolicy {
             .map(\.id)
     }
 
+    /// A web process above this memory footprint runs out of control: normal heavy pages stay
+    /// under 2 GB, and on 2026-11-17 one Reddit tab grew to 44 GB (460 MB a minute).
+    public static let memoryLimit: UInt64 = 4 << 30
+
+    /// An awake tab and the web process that shows its page. Tabs that one page opened can share a process.
+    public struct ProcessTab: Sendable {
+        public var id: UUID
+        public var pid: Int32
+        public var isSelected: Bool
+        public var isCapturing: Bool
+
+        public init(id: UUID, pid: Int32, isSelected: Bool = false, isCapturing: Bool = false) {
+            self.id = id
+            self.pid = pid
+            self.isSelected = isSelected
+            self.isCapturing = isCapturing
+        }
+    }
+
+    /// The tabs whose web process is above `limit`. Background tabs sleep, which ends the process.
+    /// If the process also shows a tab on screen, sleep frees nothing, so the user gets a warning.
+    /// A call (camera or mic) in the process keeps all its tabs awake.
+    public static func overMemoryLimit(_ tabs: [ProcessTab], footprints: [Int32: UInt64],
+                                       limit: UInt64 = memoryLimit) -> (sleep: Set<UUID>, warn: Set<UUID>) {
+        var sleep: Set<UUID> = []
+        var warn: Set<UUID> = []
+        for (pid, group) in Dictionary(grouping: tabs, by: \.pid) where (footprints[pid] ?? 0) > limit {
+            let selected = group.filter(\.isSelected)
+            if !selected.isEmpty {
+                warn.formUnion(selected.map(\.id))
+            } else if !group.contains(where: \.isCapturing) {
+                sleep.formUnion(group.map(\.id))
+            }
+        }
+        return (sleep, warn)
+    }
+
     /// Tabs that must stay awake, whatever the memory pressure:
     /// sleep would reload the page and lose what the user is doing.
     static func canSleep(_ tab: TabInfo) -> Bool {
