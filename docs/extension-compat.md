@@ -73,6 +73,14 @@ extensions.** A per-extension memory display in Settings would help users choose
   (`SWServerRegistration::clear` in the network process) and ended it. The cause is not known.
   **Test worker lifetimes in a launch without a reinstall.** The shim's restart (below) is the
   only way out of this state.
+- The same happens in a plain launch: Dashlane's first worker often went silent 3 to 5 s after
+  it started (seen 2026-10-30, Dashlane 6.2644.0, in most launches of the Debug build): no
+  answer to Bosk's pings, no new port, no messages, while its port stayed open. The worker that
+  Bosk loads in its place keeps running. The regular pings found it only 30 s in, after the
+  user had unlocked Dashlane, and the restart lost the unlock (the field icons went away). So
+  Bosk now also pings a new worker at 6 s and 12 s, and loads the extension again when one of
+  these gets no answer within 2 s (`ExtensionManager.checkNewWorker`). Tested: 3 launches, each
+  restarted Dashlane once at 8 to 15 s, and the new worker answered every ping after that.
 - `persistent: true` is refused in manifest version 3 (`WebExtension.cpp`), so a background
   page cannot be made persistent for a Chrome extension.
 - WebKit fails every storage call of an extension when it cannot open the extension's storage
