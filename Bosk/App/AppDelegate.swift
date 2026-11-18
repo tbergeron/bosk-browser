@@ -50,6 +50,22 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
         TabSleepManager.shared.storesProvider = { [weak self] in self?.windowControllers.map(\.store) ?? [] }
         TabSleepManager.shared.start()
         Task.detached(priority: .background) { ReaderMode.deleteOldArticles() }
+        // WKWebView does nothing with the side buttons of a mouse (4 and 5). Safari and Chrome
+        // make them Back and Forward in their own code, so Bosk does too.
+        NSEvent.addLocalMonitorForEvents(matching: .otherMouseDown) { event in
+            let button = event.buttonNumber
+            let window = event.window
+            let handled = MainActor.assumeIsolated { () -> Bool in
+                guard let controller = window?.windowController as? BrowserWindowController else { return false }
+                switch button {
+                case 3: controller.browserBack(nil)
+                case 4: controller.browserForward(nil)
+                default: return false
+                }
+                return true
+            }
+            return handled ? nil : event
+        }
         #if DEBUG
         if let controller = windowControllers.first {
             PerfHarness.runIfRequested(controller)
