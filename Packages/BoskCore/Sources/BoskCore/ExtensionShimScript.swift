@@ -775,7 +775,7 @@ extension ExtensionShim {
         const hasWorker = (() => { try { const b = runtime.getManifest().background || {}; return !!(b.service_worker || b.scripts || b.page); } catch (e) { return false; } })();
         // The message itself doesn't wait on the answer: a worker busy
         // starting up can take seconds. An empty reply means gone; silence
-        // for a quarter of a minute does too.
+        // for a quarter of a minute ("late") means only slow.
         let asking = false;
         const check = () => {
           if (!hasWorker || asking || Date.now() - heard < 5000) return;
@@ -797,8 +797,10 @@ extension ExtensionShim {
             // the question alone can go unheard from a page that listens.
             if (r === "pong" || heard >= started) heard = Math.max(heard, Date.now());
             // (Bosk: said only by a page still on screen. A popup that is closing
-            // gets no answer either, and its word would end a worker that runs.)
-            else if (document.visibilityState === "visible") {
+            // gets no answer either, and its word would end a worker that runs.
+            // And not for "late": a worker that is only slow - starved of CPU -
+            // runs, and a new load of a running worker breaks it until Bosk quits.)
+            else if (r !== "late" && document.visibilityState === "visible") {
               if (__BOSK_VERBOSE__) native("debug.error", ["worker check: " + String(r) + " from " + location.pathname]).catch(() => {});
               native("background.revive", []).catch(() => {});
             }
@@ -1847,9 +1849,10 @@ extension ExtensionShim {
 
       // (Bosk's own, not from Search.) WebKit can end a worker and still count it as loaded;
       // then each message to it goes nowhere, for good, and only a load of the whole extension
-      // helps (ExtensionManager.revive). So the worker holds a port to Bosk and answers its
-      // pings on it. A ping without an answer, or the port gone, and Bosk loads the extension
-      // again. (The shim's connectNative leaves a port named "bosk...." as it is.)
+      // helps (ExtensionManager.revive). So the worker holds a port to Bosk: the port gone, and
+      // Bosk loads the extension again. Bosk no longer pings on it (a slow worker is not a dead
+      // one); the pong listener stays, and it keeps a reference to the port.
+      // (The shim's connectNative leaves a port named "bosk...." as it is.)
       if (worker && runtime && typeof runtime.connectNative === "function") {
         const hold = () => {
           let port;

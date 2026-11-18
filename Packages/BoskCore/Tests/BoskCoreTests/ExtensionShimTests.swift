@@ -225,6 +225,52 @@ struct ExtensionShimTests {
         #expect(try listenersLeftAfterPagehide(persisted: true) >= 3)
     }
 
+    /// Runs the prepared shim as a popup on screen. WebKit's sendMessage gives `reply` (the
+    /// worker's answer as WebKit passes it on). Each timer runs at once, so the 15 s waits of
+    /// the worker check end at once. Returns the native messages the shim sent.
+    func workerCheckReports(reply: String) throws -> [String] {
+        try worker()
+        try ExtensionShim.prepare(folder, chromeVersion: "141.0.0.0")
+        let context = try #require(JSContext())
+        context.evaluateScript("""
+        var sent = [], timers = [];
+        globalThis.setTimeout = (f) => timers.push(f);
+        globalThis.clearTimeout = () => {};
+        var ev = () => ({ addListener() {}, removeListener() {}, hasListener() { return false; } });
+        globalThis.document = { visibilityState: "visible" };
+        globalThis.addEventListener = () => {};
+        globalThis.location = { protocol: "chrome-extension:", pathname: "/popup.html", origin: "x", href: "x/popup.html" };
+        // WebKit's own sendMessage is on the prototype, where the shim looks for it.
+        var webKit = { sendMessage: () => \(reply) };
+        globalThis.chrome = {
+          runtime: Object.assign(Object.create(webKit), { id: "x", getURL: (p) => "x/" + p,
+            getManifest: () => ({ manifest_version: 3, background: { service_worker: "bg.js" } }),
+            sendNativeMessage: (app, m) => { sent.push(m.api); return Promise.resolve({ value: null }); },
+            onMessage: ev(), onConnect: ev() }),
+          storage: { onChanged: ev() },
+        };
+        """)
+        context.evaluateScript(try read("bosk-shim.js"))
+        #expect(context.exception == nil, "\(context.exception?.toString() ?? "")")
+        context.evaluateScript(#"chrome.runtime.sendMessage("hello");"#)
+        // Each round runs the timers that are due, then the promises they settle.
+        for _ in 0..<20 { context.evaluateScript("timers.splice(0).forEach((f) => f());") }
+        #expect(context.exception == nil, "\(context.exception?.toString() ?? "")")
+        return context.evaluateScript("sent").toArray() as? [String] ?? []
+    }
+
+    @Test("A popup does not have a slow worker loaded again: a new load of a running worker breaks it until Bosk quits")
+    func slowWorkerIsNotRestarted() throws {
+        let sent = try workerCheckReports(reply: "new Promise(() => {})")
+        #expect(sent.contains("background.wake"))
+        #expect(!sent.contains("background.revive"))
+    }
+
+    @Test("A popup has a lost worker loaded again: for a worker it lost, WebKit answers each message with nothing")
+    func lostWorkerIsRestarted() throws {
+        #expect(try workerCheckReports(reply: "Promise.resolve(undefined)").contains("background.revive"))
+    }
+
     @Test("A content script becomes ASCII, because one other character doubles its copy in each web process")
     func contentScriptBecomesASCII() throws {
         let data = try JSONSerialization.data(withJSONObject: [

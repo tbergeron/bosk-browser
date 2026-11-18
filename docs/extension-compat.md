@@ -102,16 +102,20 @@ It also:
 - Makes a service worker's WebSocket in the app, with URLSession, over a native port
   (`ExtensionSocket.swift`). Tested on 2026-09-25 with a test worker and a local echo server:
   the socket opened, sent and received, and the worker did not freeze.
-- Pings the worker before a page's message. With no answer, Bosk asks WebKit to load the
-  background again (3 tries), then unloads and loads the extension (at most once a minute).
+- Pings the worker before a page's message. With an empty answer, Bosk asks WebKit to load
+  the background again (3 tries), then unloads and loads the extension (at most once a minute).
   The restart is done only while one of the extension's pages is on screen (its popup, or a
   tab at its address): a popup that is closing gets no answer either, and its report once
-  ended a worker that ran. Bosk also restarts an extension when WebKit reports that a worker
-  failed to load.
-- The worker holds a native port "bosk.alive" to Bosk. Bosk pings it every 15 s; no answer by
-  the next ping, or the port gone while the extension stays loaded, and Bosk loads the
-  extension again. This catches a worker that WebKit ended but still counts as loaded, with
-  no popup open.
+  ended a worker that ran. No answer in 15 s means a slow worker, not a lost one, and gives no
+  restart. Bosk also restarts an extension when WebKit reports that a worker failed to load.
+- The worker holds a native port "bosk.alive" to Bosk. The port gone while the extension stays
+  loaded, and Bosk loads the extension again. This catches a worker that WebKit ended but
+  still counts as loaded, with no popup open.
+- Never restarts a worker that is only slow. Until 2026-11-18 Bosk also pinged each worker on
+  that port every 15 s. That day all five live workers missed one ping at the same time, and
+  the restart broke all five until Bosk quit: WebKit gave each new background page the old
+  worker's registration, then cleared it, and each new worker started in the old page's
+  process and failed there. A restart of a running worker is never safe.
 - Gives an extension page its own storage changes: after a `set`, `remove` or `clear`, the
   page's own `storage.onChanged` listeners get the change (Bitwarden's state layer waits for
   it). A copy that WebKit delivers itself within a moment is dropped.

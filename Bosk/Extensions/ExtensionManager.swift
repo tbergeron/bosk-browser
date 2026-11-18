@@ -69,42 +69,28 @@ final class ExtensionManager: NSObject {
         for context in contexts.values where context.webExtension.hasBackgroundContent {
             context.loadBackgroundContent { _ in }
         }
-        for (id, port) in workerPorts where contexts[id] != nil {
-            if workerPings[id] != nil {
-                revive(id, because: "its worker stopped answering the app")
-                continue
-            }
-            workerPings[id] = Date()
-            port.sendMessage(["ping": Date().timeIntervalSince1970], completionHandler: nil)
-        }
     }
 
     // MARK: Watching workers (the "bosk.alive" port a worker's shim holds)
 
     private var workerPorts: [String: WKWebExtension.MessagePort] = [:]
-    /// When a ping went out that has no answer yet.
-    private var workerPings: [String: Date] = [:]
 
     /// WebKit can end a worker and still count it as loaded; then each message to it goes
-    /// nowhere, for good, and a popup only shows its spinner (seen with Bitwarden a few seconds
-    /// after its start, cause not known). Bosk pings the worker on this port from
-    /// `keepWorkersLoaded`. No answer by the next ping, or the port gone while the extension
-    /// stays loaded, and the extension is loaded again.
+    /// nowhere, for good, and a popup only shows its spinner (seen 2026-11-16: tracking
+    /// prevention cleared the workers). The port gone while the extension stays loaded means
+    /// the worker ended, and the extension is loaded again.
+    /// A worker that is only slow must not be loaded again: until 2026-11-18 Bosk pinged each
+    /// worker every 15 s, and on that day all five live workers missed one ping at the same
+    /// time. A new load of a running worker breaks it until Bosk quits: WebKit gives the new
+    /// background page the old worker's registration, then clears it, and each new worker
+    /// starts in the old page's process and fails there.
     func watchWorker(_ port: WKWebExtension.MessagePort, of context: WKWebExtensionContext) {
         let id = context.uniqueIdentifier
         workerPorts[id] = port
-        workerPings[id] = nil
-        port.messageHandler = { [weak self] _, _ in
-            MainActor.assumeIsolated {
-                guard let self, self.workerPorts[id] === port else { return }
-                self.workerPings[id] = nil
-            }
-        }
         port.disconnectHandler = { [weak self] _ in
             MainActor.assumeIsolated {
                 guard let self, self.workerPorts[id] === port else { return }
                 self.workerPorts[id] = nil
-                self.workerPings[id] = nil
                 // Still this context: the worker went, not the extension.
                 guard self.contexts[id] === context else { return }
                 self.revive(id, because: "its worker went away")
@@ -432,7 +418,6 @@ final class ExtensionManager: NSObject {
     private func unload(_ id: String) {
         guard let context = contexts.removeValue(forKey: id) else { return }
         workerPorts[id] = nil
-        workerPings[id] = nil
         storageFailures[id] = nil
         ExtensionShimAnswers.forget(id)
         if let observer = errorObservers.removeValue(forKey: id) { NotificationCenter.default.removeObserver(observer) }
