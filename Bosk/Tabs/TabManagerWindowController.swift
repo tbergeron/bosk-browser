@@ -3,6 +3,7 @@ import SwiftUI
 
 /// Window > Tab Manager: each tab with the memory and CPU of its web process, updated every 2 seconds.
 /// Tabs that one page opened can share a process; they show the same numbers and process ID.
+/// The pages of saved web apps (Save as App) are tabs too, with the web app's name.
 @MainActor
 final class TabManagerWindowController: NSWindowController, NSWindowDelegate {
     static let shared = TabManagerWindowController()
@@ -41,6 +42,8 @@ final class TabManagerModel {
         let title: String
         let site: String
         let icon: NSImage?
+        /// The saved web app that shows this tab; nil for a tab in a browser window.
+        let appName: String?
         let pid: Int32?
         /// Nil while the tab sleeps.
         let memory: UInt64?
@@ -81,7 +84,9 @@ final class TabManagerModel {
         var usages: [Int32: (memory: UInt64, cpu: Double?)] = [:]
         var samples: [Int32: (cpuNanoseconds: UInt64, time: UInt64)] = [:]
         var rows: [Row] = []
-        for store in TabSleepManager.shared.storesProvider?() ?? [] {
+        let browserStores = (TabSleepManager.shared.storesProvider?() ?? []).map { (store: $0, appName: String?.none) }
+        let webAppStores = WebAppHost.shared.sessions.map { (store: $0.store, appName: $0.appName ?? "Web App") }
+        for (store, appName) in browserStores + webAppStores {
             for tab in store.allTabs {
                 let pid = tab.webView.flatMap { WebProcessStats.pid($0) }
                 if let pid, usages[pid] == nil, let usage = WebProcessStats.usage(pid) {
@@ -94,7 +99,7 @@ final class TabManagerModel {
                 }
                 let usage = pid.flatMap { usages[$0] }
                 rows.append(Row(id: tab.id, tab: tab, title: tab.displayTitle, site: tab.url?.host() ?? "",
-                                icon: tab.favicon, pid: pid, memory: usage?.memory, cpu: usage?.cpu,
+                                icon: tab.favicon, appName: appName, pid: pid, memory: usage?.memory, cpu: usage?.cpu,
                                 isSelected: tab === store.selectedTab))
             }
         }
@@ -114,6 +119,9 @@ struct TabManagerView: View {
                         Image(nsImage: icon).resizable().frame(width: 16, height: 16)
                     }
                     Text(row.title).lineLimit(1)
+                    if let appName = row.appName {
+                        Text(appName).foregroundStyle(.secondary).lineLimit(1)
+                    }
                 }
                 .help(row.site)
             }

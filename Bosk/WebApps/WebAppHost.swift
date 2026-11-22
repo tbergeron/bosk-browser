@@ -37,7 +37,9 @@ final class WebAppHost {
 final class WebAppSession: TabStoreDelegate {
     private let connection: WebAppConnection
     private(set) var tab: Tab?
-    private let store = TabStore(isWebApp: true)
+    let store = TabStore(isWebApp: true)
+    /// The web app's name, for the Tab Manager.
+    private(set) var appName: String?
     private var window: WebAppWindow?
     /// The page's drawing, which the helper shows with a CALayerHost (see `show`).
     private var drawingContext: NSObject?
@@ -63,7 +65,9 @@ final class WebAppSession: TabStoreDelegate {
 
     private func handle(_ message: WebAppMessage) {
         switch message {
-        case let .hello(url, _, frame): open(url: url, frame: frame)
+        case let .hello(url, appID, frame):
+            appName = NSRunningApplication.runningApplications(withBundleIdentifier: appID).first?.localizedName
+            open(url: url, frame: frame)
         case .frame(let frame):
             window?.place(at: frame)
             keepDrawingContext()
