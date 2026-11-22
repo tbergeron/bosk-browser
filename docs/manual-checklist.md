@@ -23,6 +23,7 @@ Then open http://localhost:8765 in Bosk.
 | /upload | The file panel opens as a sheet; "Send" shows the byte count | Not tested |
 | /form | Type text, do not send, go to another tab: the tab stays awake past the sleep time | Yes (`-BoskSleepAfterSeconds 15`) |
 | /media | Bosk asks "Allow localhost to use your camera and microphone?"; macOS may also ask the first time; video shows | Not tested. (The permission method had a wrong signature and was never called; fixed after the M5 tests.) |
+| /notifications | "Ask" shows "Allow “localhost” to show notifications?"; the answer is saved, and the site panel shows a Notifications switch. "Page notification" and "Worker notification" show Mac notifications, also after a relaunch. A click shows the tab, and the page shows "clicked" or "worker clicked". With the switch off, no notification shows. | Yes (Debug app, 2026-11-22): prompt, saved answers, switch, banners, both clicks, and after a relaunch. Each tab has its own process pool, so a provider on the first tab's pool only was a bug that showed after a relaunch |
 | A page that does not exist | Bosk's error page with "Try Again". It is not saved in history. | Yes |
 | http://example.com (no HTTPS) | Loads (App Transport Security allows web content) | Yes |
 | Google sign-in (accounts.google.com) | Sign-in works; Google does not say "browser not supported" | Not tested |

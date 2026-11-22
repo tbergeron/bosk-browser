@@ -103,6 +103,7 @@ enum WebViewFactory {
         webView.allowsBackForwardNavigationGestures = true
         webView.allowsMagnification = true
         PageBackground.watchFirstContent(in: webView)
+        WebNotifications.install(on: webView)
         #if DEBUG
         webView.isInspectable = true
         #endif

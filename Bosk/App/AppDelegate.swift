@@ -1,5 +1,6 @@
 import AppKit
 import BoskCore
+import UserNotifications
 import WebKit
 
 @main
@@ -23,6 +24,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
     }
 
     func applicationDidFinishLaunching(_ notification: Notification) {
+        // Before the session: a click on a notification can be what started Bosk.
+        UNUserNotificationCenter.current().delegate = NotificationClickHandler.shared
         NSApp.mainMenu = MainMenu.make()
         BookmarkStore.shared.load()
         // Before the session, so the saved rule list is on the tabs as soon as possible.

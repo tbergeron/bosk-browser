@@ -16,6 +16,7 @@ PAGES = {
       <li><a href="/upload">File upload</a></li>
       <li><a href="/form">Form (unsent text keeps the tab awake)</a></li>
       <li><a href="/media">Camera and microphone</a></li>
+      <li><a href="/notifications">Notifications</a></li>
       <li><a href="/ads">Ad script (an ad blocker blocks it)</a></li>
       <li><a href="/cookies">Cookie notice (the cookie notice blocker hides it)</a></li>
       <li><a href="http://no-such-host.invalid/">A page that does not exist</a></li></ul>""",
@@ -47,7 +48,24 @@ PAGES = {
         .then(s => { document.querySelector('video').srcObject = s; r.textContent = 'allowed'; })
         .catch(e => r.textContent = e.name)">Start camera</button>
       <p>Result: <span id="r"></span></p><video autoplay muted playsinline width="320"></video>""",
+    "/notifications": """<h1>Notifications</h1>
+      <p>Permission: <span id="p"></span></p>
+      <button onclick="Notification.requestPermission().then(a => p.textContent = a)">Ask</button>
+      <button onclick="const n = new Notification('Page notification', {body: 'Click me', tag: 't'});
+        n.onshow = () => r.textContent = 'shown'; n.onerror = () => r.textContent = 'error';
+        n.onclick = () => r.textContent = 'clicked'">Page notification</button>
+      <button onclick="navigator.serviceWorker.register('/notifications-sw.js')
+        .then(() => navigator.serviceWorker.ready)
+        .then(reg => reg.showNotification('Worker notification', {body: 'From the service worker'}))
+        .then(() => r.textContent = 'worker shown', e => r.textContent = 'worker ' + e)">Worker notification</button>
+      <p>Result: <span id="r"></span></p>
+      <script>p.textContent = Notification.permission;
+        navigator.serviceWorker.onmessage = e => r.textContent = e.data;</script>""",
 }
+
+# The service worker of /notifications: it tells its pages when its notification is clicked.
+NOTIFICATIONS_WORKER = b"""self.onnotificationclick = e => { e.notification.close();
+  e.waitUntil(clients.matchAll().then(all => all.forEach(c => c.postMessage('worker clicked')))); };"""
 
 
 class Handler(BaseHTTPRequestHandler):
@@ -76,6 +94,12 @@ class Handler(BaseHTTPRequestHandler):
                 self.send_html("<h1>Signed in</h1>")
             else:
                 self.send_html("<h1>Sign-in needed</h1>", 401, [("WWW-Authenticate", 'Basic realm="Bosk test"')])
+        elif self.path == "/notifications-sw.js":
+            self.send_response(200)
+            self.send_header("Content-Type", "text/javascript")
+            self.send_header("Content-Length", str(len(NOTIFICATIONS_WORKER)))
+            self.end_headers()
+            self.wfile.write(NOTIFICATIONS_WORKER)
         elif self.path in PAGES:
             self.send_html(PAGES[self.path])
         else:

@@ -3,7 +3,7 @@ import SecurityInterface
 import WebKit
 
 /// The sliders button before the ad blocker shield, on web pages. It opens the site panel: the connection,
-/// the camera and microphone answers, sound, zoom, and a button that clears the site's data.
+/// the camera, microphone and notification answers, sound, zoom, and a button that clears the site's data.
 @MainActor
 final class SiteButton: NSButton {
     private let popover = NSPopover()
@@ -79,6 +79,10 @@ private final class SitePanel: NSViewController {
             guard let allowed = PermissionMemory.of(tab).answer(for: host, device: device) else { continue }
             let (symbol, title) = device == .camera ? ("video", "Camera") : ("mic", "Microphone")
             stack.addArrangedSubview(switchRow(symbol, title, on: allowed, tag: device == .camera ? 0 : 1))
+        }
+        if !tab.isPrivate, let origin = WebNotifications.origin(of: tab.url),
+           let allowed = WebNotifications.answer(forOrigin: origin) {
+            stack.addArrangedSubview(switchRow("bell", "Notifications", on: allowed, tag: 3))
         }
         stack.addArrangedSubview(switchRow("speaker.wave.2", "Sound", on: !tab.isMuted, tag: 2))
         stack.addArrangedSubview(zoomRow())
@@ -200,6 +204,8 @@ private final class SitePanel: NSViewController {
                     tab.webView?.setMicrophoneCaptureState(.none)
                 }
             }
+        case 3:
+            if let origin = WebNotifications.origin(of: tab.url) { WebNotifications.set(on, forOrigin: origin) }
         default:
             tab.isMuted = !on
         }

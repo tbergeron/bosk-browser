@@ -245,6 +245,14 @@ extension Tab: WKUIDelegate {
                                       host: nil, in: window, confirmTitle: "Allow", cancelTitle: "Don’t Allow")
         }
     }
+
+    /// Private WKUIDelegate call: the page's `Notification.requestPermission()`.
+    /// Without it, WebKit denies all sites.
+    @objc(_webView:requestNotificationPermissionForSecurityOrigin:decisionHandler:)
+    func webView(_ webView: WKWebView, requestNotificationPermissionFor origin: WKSecurityOrigin,
+                 decisionHandler: @escaping (Bool) -> Void) {
+        Task { decisionHandler(await WebNotifications.requestPermission(for: origin, in: self)) }
+    }
 }
 
 /// Camera and microphone answers, per site and device, until Bosk quits. Not saved to disk:
