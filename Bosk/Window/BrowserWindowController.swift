@@ -286,6 +286,10 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate {
         operation.view?.frame = webView.bounds
         operation.runModal(for: window, delegate: nil, didRun: nil, contextInfo: nil)
     }
+    @objc func saveAsApp(_ sender: Any?) {
+        guard let tab = store.selectedTab, let window else { return }
+        WebAppCreator.saveAsApp(tab, in: window)
+    }
     @objc func zoomIn(_ sender: Any?) { store.selectedTab?.changeZoom(larger: true) }
     @objc func zoomOut(_ sender: Any?) { store.selectedTab?.changeZoom(larger: false) }
     @objc func actualSize(_ sender: Any?) {
@@ -411,6 +415,9 @@ extension BrowserWindowController: NSMenuItemValidation {
     /// will do (also in Search Commands). "Bookmark This Page" and "Toggle Reader Mode" need a web page. The group
     /// items need a normal tab (and a group, to remove from). A hidden sidebar cannot fold.
     func validateMenuItem(_ menuItem: NSMenuItem) -> Bool {
+        if menuItem.action == #selector(saveAsApp(_:)) {
+            return !store.isPrivate && ["http", "https"].contains(store.selectedTab?.url?.scheme ?? "")
+        }
         if menuItem.action == #selector(toggleHidesSidebar(_:)) {
             menuItem.title = Preferences.hidesSidebar ? "Show Sidebar" : "Hide Sidebar"
             return true

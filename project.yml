@@ -27,6 +27,12 @@ targets:
     dependencies:
       - package: BoskCore
       - package: Sparkle
+      # The template for Save as App. Bosk copies it for each saved web app.
+      - target: BoskWebApp
+        embed: true
+        copy:
+          destination: wrapper
+          subpath: Contents/Helpers
     info:
       path: Bosk/Resources/Info.plist
       properties:
@@ -77,3 +83,30 @@ targets:
         Debug:
           PRODUCT_BUNDLE_IDENTIFIER: com.brainpad.bosk.debug
     scheme: {}
+
+  # A saved web app (Save as App): window, Dock icon, menu bar and notifications for a page
+  # that lives in Bosk. Bosk copies it, writes the site into its Info.plist, and signs the copy.
+  BoskWebApp:
+    type: application
+    platform: macOS
+    sources:
+      - WebAppHelper
+    dependencies:
+      - package: BoskCore
+    info:
+      path: WebAppHelper/Info.plist
+      properties:
+        CFBundleDisplayName: Bosk Web App
+        CFBundleShortVersionString: $(MARKETING_VERSION)
+        CFBundleVersion: $(CURRENT_PROJECT_VERSION)
+        NSPrincipalClass: NSApplication
+        LSMinimumSystemVersion: $(MACOSX_DEPLOYMENT_TARGET)
+        LSApplicationCategoryType: public.app-category.productivity
+    settings:
+      base:
+        PRODUCT_NAME: Bosk Web App
+        PRODUCT_BUNDLE_IDENTIFIER: com.brainpad.bosk.webapp
+        ENABLE_HARDENED_RUNTIME: YES
+        CODE_SIGN_IDENTITY: "-"
+        CODE_SIGN_STYLE: Manual
+        SKIP_INSTALL: YES

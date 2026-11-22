@@ -32,6 +32,7 @@ enum MainMenu {
         fileMenu.addItem(.separator())
         // No shortcut: Cmd+P is Search Commands.
         fileMenu.addItem(withTitle: "Print…", action: #selector(BrowserWindowController.printPage(_:)), keyEquivalent: "")
+        fileMenu.addItem(withTitle: "Save as App…", action: #selector(BrowserWindowController.saveAsApp(_:)), keyEquivalent: "")
         add(fileMenu, title: "File", to: main)
 
         let editMenu = NSMenu(title: "Edit")

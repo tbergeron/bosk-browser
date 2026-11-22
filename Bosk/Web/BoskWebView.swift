@@ -7,6 +7,16 @@ final class BoskWebView: WKWebView {
     /// Set by the page menu's "Open … in New Tab" items. createWebViewWith reads it (and clears it)
     /// and does not select that tab. The navigation action does not tell a menu item from a click.
     var opensBackgroundTab = false
+    /// The page of a saved web app (`WebAppHost`). The Mac text input system serves only the
+    /// active app, which is the web app's helper, so this web view does not use it: WebKit then
+    /// puts typed text in the page itself, and the helper sends composed text (accents).
+    var isInWebApp = false
+
+    override var inputContext: NSTextInputContext? { isInWebApp ? nil : super.inputContext }
+
+    /// Bosk is never the active app while a web app is in front, so each click would be the click
+    /// that "activates" the window, and AppKit would not give it to the page.
+    override func acceptsFirstMouse(for event: NSEvent?) -> Bool { isInWebApp || super.acceptsFirstMouse(for: event) }
     /// WebKit's own target and action for those items. All of them use the same pair.
     private var menuTarget: AnyObject?
     private var menuAction: Selector?

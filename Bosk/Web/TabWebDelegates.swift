@@ -229,6 +229,13 @@ extension Tab: WKUIDelegate {
     func webView(_ webView: WKWebView, runOpenPanelWith parameters: WKOpenPanelParameters,
                  initiatedByFrame frame: WKFrameInfo) async -> [URL]? {
         guard let window = store?.window else { return nil }
+        if let webApp = (window as? WebAppWindow)?.session {
+            let reply = await webApp.ask(WebAppDialog(id: 0, kind: .openFiles, message: "",
+                                                      allowsMultiple: parameters.allowsMultipleSelection,
+                                                      allowsDirectories: parameters.allowsDirectories))
+            guard let reply, reply.ok else { return nil }
+            return (reply.paths ?? []).map { URL(fileURLWithPath: $0) }
+        }
         let panel = NSOpenPanel()
         panel.allowsMultipleSelection = parameters.allowsMultipleSelection
         panel.canChooseDirectories = parameters.allowsDirectories

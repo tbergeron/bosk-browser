@@ -42,8 +42,10 @@ enum WebNotifications {
         let allowed = await PageDialogs.confirm("Allow “\(origin.host)” to show notifications?", host: nil, in: window,
                                                 confirmTitle: "Allow", cancelTitle: "Don’t Allow")
         set(allowed, forOrigin: key)
-        // macOS asks once if Bosk can show notifications at all.
-        if allowed { _ = try? await UNUserNotificationCenter.current().requestAuthorization(options: [.alert, .sound]) }
+        // macOS asks once if Bosk can show notifications at all. A web app's helper asks for itself.
+        if allowed, tab.store?.isWebApp != true {
+            _ = try? await UNUserNotificationCenter.current().requestAuthorization(options: [.alert, .sound])
+        }
         return allowed
     }
 
@@ -77,7 +79,8 @@ enum WebNotifications {
         api.setProvider(api.contextManager(api.pageContext(page)), provider)
     }
 
-    private static var allTabs: [Tab] { (NSApp.delegate as? AppDelegate)?.allTabs ?? [] }
+    /// The browser windows' tabs and the saved web apps' tabs.
+    private static var allTabs: [Tab] { ((NSApp.delegate as? AppDelegate)?.allTabs ?? []) + WebAppHost.shared.tabs }
 
     /// The manager that has the tab's notifications. Nil when the tab sleeps or is gone.
     private static func manager(ofTab id: UUID?, api: WebKitNotificationAPI) -> UnsafeRawPointer? {
@@ -97,6 +100,7 @@ enum WebNotifications {
             guard let api else { return }
             let identifier = identifier(of: notification, api: api)
             UNUserNotificationCenter.current().removeDeliveredNotifications(withIdentifiers: [identifier])
+            for session in WebAppHost.shared.sessions { session.removeNotification(identifier) }
             shown[identifier] = nil
         }
     }
@@ -140,6 +144,15 @@ enum WebNotifications {
         content.userInfo = ["origin": origin]
         let id = api.id(notification)
         let tabID = tab?.id
+        // A saved web app shows its notifications itself, with its own name and icon. A service
+        // worker's notification has no page: it goes to the web app open on the same site.
+        let webApp = tab.flatMap(WebAppHost.shared.session(for:))
+            ?? (tab == nil ? WebAppHost.shared.sessions.first { self.origin(of: $0.tab?.url) == origin } : nil)
+        if let webApp {
+            webApp.notify(identifier: identifier, title: content.title, subtitle: content.subtitle, body: content.body)
+            if let manager = isPersistent ? workerManager : manager(ofTab: tabID, api: api) { api.didShow(manager, id) }
+            return
+        }
         Task {
             try? await UNUserNotificationCenter.current().add(
                 UNNotificationRequest(identifier: identifier, content: content, trigger: nil))
@@ -156,8 +169,11 @@ enum WebNotifications {
         let tabs = allTabs.filter { !$0.isPrivate }
         // The tab that showed it, or else one open on the same site (after a reload or a relaunch).
         let tab = tabs.first { $0.id == record?.tabID } ?? tabs.first { self.origin(of: $0.url) == origin }
-        if let tab { delegate?.showTab(id: tab.id) }
-        NSApp.activate()
+        // A web app's helper is already in front: it got the click.
+        if let tab, tab.store?.isWebApp != true {
+            delegate?.showTab(id: tab.id)
+            NSApp.activate()
+        }
         guard let api, let record,
               let manager = record.isPersistent ? workerManager : manager(ofTab: record.tabID, api: api) else { return }
         api.didClick(manager, record.webKitID)

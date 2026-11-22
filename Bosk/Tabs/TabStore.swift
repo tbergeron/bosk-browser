@@ -40,10 +40,15 @@ final class TabStore {
     /// A private window keeps nothing on disk, has no pinned tabs and no extensions.
     var isPrivate: Bool { privateStore != nil }
 
-    init(privateStore: WKWebsiteDataStore? = nil) {
+    /// The one tab of a saved web app (Save as App). It has no pinned tabs, and the tabs that its
+    /// page opens (links in a new tab, pop-ups) go to a normal browser window.
+    let isWebApp: Bool
+
+    init(privateStore: WKWebsiteDataStore? = nil, isWebApp: Bool = false) {
         self.privateStore = privateStore
+        self.isWebApp = isWebApp
         // Pinned tabs are saved on disk, so private windows do not show or make them.
-        guard privateStore == nil else { return }
+        guard privateStore == nil, !isWebApp else { return }
         PinnedStore.shared.addObserver(self) { [weak self] in self?.syncPinnedTabs() }
     }
 
@@ -105,6 +110,11 @@ final class TabStore {
 
     /// - Parameter after: The new tab goes below this tab, in its group; nil puts it at the end.
     func insert(_ tab: Tab, after: Tab?, select: Bool) {
+        if isWebApp, !tabs.isEmpty {
+            (NSApp.delegate as? AppDelegate)?.openInBrowser(tab, select: select)
+            (delegate as? WebAppSession)?.showBosk()
+            return
+        }
         tab.store = self
         tab.openedAt = Date()
         if let after, let index = tabs.firstIndex(where: { $0 === after }) {

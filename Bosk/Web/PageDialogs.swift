@@ -1,9 +1,15 @@
 import AppKit
+import BoskCore
 
 /// Sheets for page dialogs (alert, confirm, prompt, sign-in) and the error page.
+/// In a saved web app, the web app's own window shows them (`WebAppSession.ask`).
 @MainActor
 enum PageDialogs {
     static func alert(_ message: String, host: String?, in window: NSWindow) async {
+        if let webApp = (window as? WebAppWindow)?.session {
+            _ = await webApp.ask(WebAppDialog(id: 0, kind: .alert, message: message, host: host))
+            return
+        }
         let alert = makeAlert(message, host: host)
         alert.addButton(withTitle: "OK")
         _ = await alert.beginSheetModal(for: window)
@@ -11,6 +17,10 @@ enum PageDialogs {
 
     static func confirm(_ message: String, host: String?, in window: NSWindow,
                         confirmTitle: String = "OK", cancelTitle: String = "Cancel") async -> Bool {
+        if let webApp = (window as? WebAppWindow)?.session {
+            return await webApp.ask(WebAppDialog(id: 0, kind: .confirm, message: message, host: host,
+                                                 confirmTitle: confirmTitle, cancelTitle: cancelTitle))?.ok ?? false
+        }
         let alert = makeAlert(message, host: host)
         alert.addButton(withTitle: confirmTitle)
         alert.addButton(withTitle: cancelTitle)
@@ -18,6 +28,11 @@ enum PageDialogs {
     }
 
     static func prompt(_ message: String, defaultText: String?, host: String?, in window: NSWindow) async -> String? {
+        if let webApp = (window as? WebAppWindow)?.session {
+            let reply = await webApp.ask(WebAppDialog(id: 0, kind: .prompt, message: message, host: host,
+                                                      defaultText: defaultText))
+            return reply?.ok == true ? reply?.text ?? "" : nil
+        }
         let alert = makeAlert(message, host: host)
         let field = NSTextField(string: defaultText ?? "")
         field.frame = NSRect(x: 0, y: 0, width: 280, height: 24)
@@ -30,6 +45,11 @@ enum PageDialogs {
 
     /// HTTP sign-in (Basic, Digest, NTLM). Bosk does not save the password.
     static func signIn(host: String, in window: NSWindow) async -> (String, String)? {
+        if let webApp = (window as? WebAppWindow)?.session {
+            let reply = await webApp.ask(WebAppDialog(id: 0, kind: .signIn, message: "Sign in to \(host)"))
+            guard let reply, reply.ok else { return nil }
+            return (reply.text ?? "", reply.password ?? "")
+        }
         let alert = NSAlert()
         alert.messageText = "Sign in to \(host)"
         alert.informativeText = "Your password is sent to this site only. Bosk does not save it."

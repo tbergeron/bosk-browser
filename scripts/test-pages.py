@@ -17,6 +17,7 @@ PAGES = {
       <li><a href="/form">Form (unsent text keeps the tab awake)</a></li>
       <li><a href="/media">Camera and microphone</a></li>
       <li><a href="/notifications">Notifications</a></li>
+      <li><a href="/controls">Controls for a saved web app (Save as App)</a></li>
       <li><a href="/ads">Ad script (an ad blocker blocks it)</a></li>
       <li><a href="/cookies">Cookie notice (the cookie notice blocker hides it)</a></li>
       <li><a href="http://no-such-host.invalid/">A page that does not exist</a></li></ul>""",
@@ -61,6 +62,13 @@ PAGES = {
       <p>Result: <span id="r"></span></p>
       <script>p.textContent = Notification.permission;
         navigator.serviceWorker.onmessage = e => r.textContent = e.data;</script>""",
+    # Save this page as an app (File > Save as App…) and check each control in the app's window.
+    "/controls": """<h1>Controls</h1>
+      <p>Text (the cursor is an I-beam here). Right-click it for the page menu.</p>
+      <p><select onchange="r.textContent = this.value"><option>one</option><option>two</option><option>three</option></select>
+        <a href="/dialogs" target="_blank">target=_blank link (opens in a Bosk window)</a></p>
+      <p><input placeholder="Type here"></p>
+      <p>Result: <span id="r"></span></p>""",
 }
 
 # The service worker of /notifications: it tells its pages when its notification is clicked.

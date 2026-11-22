@@ -26,6 +26,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
     func applicationDidFinishLaunching(_ notification: Notification) {
         // Before the session: a click on a notification can be what started Bosk.
         UNUserNotificationCenter.current().delegate = NotificationClickHandler.shared
+        // Before the session, so a web app that started Bosk connects as soon as possible.
+        WebAppHost.shared.start()
         NSApp.mainMenu = MainMenu.make()
         BookmarkStore.shared.load()
         // Before the session, so the saved rule list is on the tabs as soon as possible.
@@ -110,6 +112,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
     func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows: Bool) -> Bool {
         if !hasVisibleWindows { openWindow() }
         return true
+    }
+
+    /// A tab that a web app's page opened (a link in a new tab, a pop-up such as a sign-in page).
+    /// It goes to the front normal window, and Bosk comes to the front.
+    func openInBrowser(_ tab: Tab, select: Bool) {
+        let controller = normalWindowControllers.last ?? openWindow(showCommandBar: false)
+        controller.store.insert(tab, after: nil, select: select)
+        controller.window?.makeKeyAndOrderFront(nil)
+        NSApp.activate()
     }
 
     /// Links from other apps open in a new tab in the front normal window, never in a private window.
