@@ -68,7 +68,10 @@ PAGES = {
       <p><select onchange="r.textContent = this.value"><option>one</option><option>two</option><option>three</option></select>
         <a href="/dialogs" target="_blank">target=_blank link (opens in a Bosk window)</a></p>
       <p><input placeholder="Type here"></p>
-      <p>Result: <span id="r"></span></p>""",
+      <p>Result: <span id="r"></span></p>
+      <p>Mouse moves seen by the page: <span id="m">0</span></p>
+      <style>a:hover { background: yellow }</style>
+      <script>addEventListener('mousemove', () => m.textContent = +m.textContent + 1)</script>""",
 }
 
 # The service worker of /notifications: it tells its pages when its notification is clicked.

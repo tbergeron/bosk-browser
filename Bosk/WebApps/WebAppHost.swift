@@ -18,6 +18,7 @@ final class WebAppHost {
     var tabs: [Tab] { sessions.compactMap(\.tab) }
 
     func start() {
+        WebAppPointer.install()
         try? FileManager.default.createDirectory(at: Defaults.dataDirectory, withIntermediateDirectories: true)
         listener = WebAppListener(path: Self.socketPath)
         listener?.onConnection = { [weak self] connection in
@@ -30,6 +31,11 @@ final class WebAppHost {
     }
 
     func session(for tab: Tab) -> WebAppSession? { sessions.first { $0.tab === tab } }
+
+    /// The page window of the web app window that is key and has `point` (screen coordinates).
+    func activePageWindowNumber(at point: NSPoint) -> Int? {
+        sessions.lazy.compactMap { $0.pageWindowNumber(ifActiveAt: point) }.first
+    }
 }
 
 /// One running web app: its tab, the window that holds the page, and the link to its helper.
@@ -172,7 +178,9 @@ final class WebAppSession: TabStoreDelegate {
                                              windowNumber: window.windowNumber, context: nil, eventNumber: 0,
                                              clickCount: mouse.clicks, pressure: 1) else { return }
         switch type {
-        case .mouseMoved: webView.mouseMoved(with: event)
+        // WebKit drops mouse moves while Bosk is not the active app (`_isInWindowActive` is false), so
+        // the page had no hover and no pointer changes. Its test call delivers them all the same.
+        case .mouseMoved: WebAppWindow.simulateMouseMove(event, in: webView)
         // Through the app, so the click is `NSApp.currentEvent`: WebKit opens a <select> list and the
         // page menu from the current event. BoskWebView takes the first click in this inactive app.
         case .leftMouseDown, .leftMouseUp, .leftMouseDragged, .rightMouseDown, .rightMouseUp, .rightMouseDragged,
@@ -181,7 +189,11 @@ final class WebAppSession: TabStoreDelegate {
             keepDrawingContext()
         default: return
         }
-        DispatchQueue.main.async { [weak self] in self?.sendCursor() }
+        // WebKit sets the pointer when its page process answers, a few milliseconds later.
+        // ponytail: 3 checks; a hook in NSCursor.set if the pointer still changes late.
+        for delay in [0.0, 0.05, 0.15] {
+            DispatchQueue.main.asyncAfter(deadline: .now() + delay) { [weak self] in self?.sendCursor() }
+        }
     }
 
     private func deliver(_ scroll: WebAppScroll) {
@@ -276,8 +288,8 @@ final class WebAppSession: TabStoreDelegate {
         }
     }
 
-    /// WebKit sets the cursor only when the mouse is over its own window, and the helper's window
-    /// is on top. So the helper shows the cursor: the I-beam over text, the hand over links.
+    /// WebKit sets the pointer in Bosk (see `WebAppPointer`), but the helper is the active app, so
+    /// the helper shows it: the I-beam over text, the hand over links and buttons.
     private func sendCursor() {
         let current = NSCursor.current
         var name = switch current {
@@ -318,6 +330,11 @@ final class WebAppSession: TabStoreDelegate {
 
     /// The page opened a tab in a Bosk window. Bosk cannot make itself active while the helper is.
     func showBosk() { connection.send(.showBosk) }
+
+    func pageWindowNumber(ifActiveAt point: NSPoint) -> Int? {
+        guard isActive, let window, window.frame.contains(point) else { return nil }
+        return window.windowNumber
+    }
 
     // MARK: TabStoreDelegate
 
@@ -384,6 +401,18 @@ final class WebAppWindow: NSWindow {
         return unsafeBitCast(method_getImplementation(method), to: Make.self)(contextClass, selector, [:])?.takeUnretainedValue()
     }
 
+    /// Private (WebKit's own tests use it): a mouse move that WebKit does not drop for a window of
+    /// an app that is not active. Without it, a plain mouse move.
+    static func simulateMouseMove(_ event: NSEvent, in webView: WKWebView) {
+        let selector = NSSelectorFromString("_simulateMouseMove:")
+        guard let method = class_getInstanceMethod(WKWebView.self, selector),
+              let types = method_getTypeEncoding(method), String(cString: types) == "v24@0:8@16" else {
+            return webView.mouseMoved(with: event)
+        }
+        typealias Simulate = @convention(c) (WKWebView, Selector, NSEvent) -> Void
+        unsafeBitCast(method_getImplementation(method), to: Simulate.self)(webView, selector, event)
+    }
+
     /// Private: WebKit stops drawing a page whose window is covered, and this window is always covered.
     static func disableOcclusionDetection(_ webView: WKWebView) {
         let selector = NSSelectorFromString("_setWindowOcclusionDetectionEnabled:")
@@ -391,5 +420,30 @@ final class WebAppWindow: NSWindow {
               let types = method_getTypeEncoding(method), String(cString: types) == "v20@0:8B16" else { return }
         typealias SetEnabled = @convention(c) (WKWebView, Selector, Bool) -> Void
         unsafeBitCast(method_getImplementation(method), to: SetEnabled.self)(webView, selector, false)
+    }
+}
+
+/// WebKit sets the pointer only when `+[NSWindow windowNumberAtPoint:belowWindowWithWindowNumber:]`
+/// says that the mouse is over the web view's window. Over a web app, the helper's window is on top,
+/// so WebKit never set the hand over links and buttons. This answers with the page window when the
+/// point is in the page window of the web app window that is key, and asks AppKit in all other cases.
+/// (A page window above the helper's window would also pass, but then it would take the clicks.)
+@MainActor
+enum WebAppPointer {
+    private typealias WindowNumberAt = @convention(c) (AnyObject, Selector, NSPoint, Int) -> Int
+    private nonisolated(unsafe) static var original: WindowNumberAt?
+
+    static func install() {
+        let selector = #selector(NSWindow.windowNumber(at:belowWindowWithWindowNumber:))
+        guard original == nil, let method = class_getClassMethod(NSWindow.self, selector),
+              let types = method_getTypeEncoding(method), String(cString: types) == "q40@0:8{CGPoint=dd}16q32" else { return }
+        let appKit = unsafeBitCast(method_getImplementation(method), to: WindowNumberAt.self)
+        original = appKit
+        let replacement: @convention(block) (AnyObject, NSPoint, Int) -> Int = { windowClass, point, below in
+            let number = appKit(windowClass, selector, point, below)
+            guard below == 0, Thread.isMainThread else { return number }
+            return MainActor.assumeIsolated { WebAppHost.shared.activePageWindowNumber(at: point) } ?? number
+        }
+        method_setImplementation(method, imp_implementationWithBlock(replacement))
     }
 }
