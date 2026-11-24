@@ -44,6 +44,7 @@ final class SettingsModel {
         /// The messages WebKit gave when it loaded the extension. The row shows the count, with the text in a tooltip.
         let warnings: [String]
         let canReload: Bool
+        let hasOptions: Bool
         var enabled: Bool
     }
 
@@ -82,7 +83,8 @@ final class SettingsModel {
         downloadFolder = Preferences.downloadFolder
         extensions = ExtensionManager.shared.records.map { record in
             let webExtension = ExtensionManager.shared.contexts[record.id]?.webExtension
-            let fromStore = ChromeExtensionPackage.isExtensionID(record.id)
+            // An unpacked folder with a manifest key also has a Chrome ID.
+            let fromStore = record.sourcePath == nil && ChromeExtensionPackage.isExtensionID(record.id)
             var details: [String] = []
             if let version = webExtension?.version { details.append("Version \(version)") }
             details.append(fromStore ? "Chrome Web Store" : "Unpacked")
@@ -93,6 +95,7 @@ final class SettingsModel {
                                 warnings: (webExtension?.errors.map(\.localizedDescription) ?? [])
                                     + (ExtensionManager.shared.storageFailures[record.id].map { [$0] } ?? []),
                                 canReload: record.sourcePath != nil,
+                                hasOptions: ExtensionManager.shared.contexts[record.id]?.optionsPageURL != nil,
                                 enabled: record.enabled)
         }
     }
@@ -200,6 +203,10 @@ final class SettingsModel {
 
     func remove(id: String) {
         ExtensionManager.shared.remove(id: id)
+    }
+
+    func openOptions(id: String) {
+        ExtensionManager.shared.openOptionsPage(id)
     }
 
     // MARK: Downloads

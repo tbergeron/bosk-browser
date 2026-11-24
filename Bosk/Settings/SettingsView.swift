@@ -247,6 +247,7 @@ private struct ExtensionsPane: View {
                         }
                         Spacer(minLength: 0)
                         Menu {
+                            if item.hasOptions { Button("Options") { model.openOptions(id: item.id) } }
                             if item.canReload { Button("Reload") { model.reload(id: item.id) } }
                             Button("Remove", role: .destructive) { model.remove(id: item.id) }
                         } label: {

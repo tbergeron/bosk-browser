@@ -103,6 +103,10 @@ final class ExtensionActionsView: NSView {
         button.action = #selector(clicked(_:))
         button.identifier = NSUserInterfaceItemIdentifier(id)
         button.menu = NSMenu()
+        // ponytail: decided when the button is made; an unpacked Reload that adds an options page shows it after a relaunch.
+        if ExtensionManager.shared.contexts[id]?.optionsPageURL != nil {
+            button.menu?.addItem(ClosureMenuItem("Options") { ExtensionManager.shared.openOptionsPage(id) })
+        }
         button.menu?.addItem(ClosureMenuItem("Manage Extension") { SettingsWindowController.shared.show(pane: .extensions) })
         button.menu?.addItem(.separator())
         button.menu?.addItem(ClosureMenuItem("Remove Extension…") { [weak self] in self?.confirmRemove(id: id) })

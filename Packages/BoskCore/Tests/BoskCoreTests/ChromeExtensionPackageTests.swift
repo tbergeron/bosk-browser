@@ -81,6 +81,23 @@ struct ChromeExtensionPackageTests {
         #expect(ChromeExtensionPackage.webStoreExtensionID(from: URL(string: "https://example.com/detail/ddkjiahejlhfcafbddmgiahcphecmpfh")!) == nil)
     }
 
+    /// Native hosts, OAuth redirects and servers allow only the ID Chrome derives from the key.
+    /// This is the key of Bedrock's capture extension; its host file allows only this ID.
+    @Test("An unpacked extension with a manifest key gets the same ID as in Chrome")
+    func idFromManifestKey() {
+        let key = "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAtRg9sDg74DOdAFn0uEPmjGoBeHmtvdIOSRQCv5MWBq/P26lsta4YQWPGt1llFDs//xqvE65GQqi2BzFynZmMFuh9Q2aTolIjdndAbhpZ02R0hnxfNSCOZK7RpJbb7Qbgxz+mfCijezXd9LmfiGi//avKzkblx5OFjkis6DX3QSXm3dzD2QnRk6EwKGl3WYf39Glq2l/UBn3KBc1o2Bp2pT0NJfN9p0dmvuufCKMNzuNivPbdVlT/PDMjCfOkwMmH1is9ZnCSsfM9XmnW3Kmcc1+M7XCd7qtHrM7vuAzwWEPGdf1fPOD89PJs6zUp0wFgbmPJBUncFx1gT6o0YH+GcQIDAQAB"
+        #expect(ChromeExtensionPackage.extensionID(fromManifestKey: key) == "dkplholmbepjdeokpmklhjdcifiidpfh")
+        // Chrome accepts a key that is split over lines.
+        let split = key.prefix(64) + "\n  " + key.dropFirst(64)
+        #expect(ChromeExtensionPackage.extensionID(fromManifestKey: String(split)) == "dkplholmbepjdeokpmklhjdcifiidpfh")
+    }
+
+    @Test("A bad or empty key gives no ID, so the install keeps a random ID and does not fail")
+    func badManifestKey() {
+        #expect(ChromeExtensionPackage.extensionID(fromManifestKey: "") == nil)
+        #expect(ChromeExtensionPackage.extensionID(fromManifestKey: "not base64!") == nil)
+    }
+
     @Test("The download address asks for CRX3 for that ID")
     func downloadURL() {
         let url = ChromeExtensionPackage.downloadURL(forExtensionID: "ddkjiahejlhfcafbddmgiahcphecmpfh")!

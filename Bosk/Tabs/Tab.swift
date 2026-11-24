@@ -125,7 +125,12 @@ final class Tab: NSObject {
     @discardableResult
     func wake(loadSavedState: Bool = true) -> WKWebView {
         if let webView { return webView }
-        let webView = WebViewFactory.makeWebView(privateStore: store?.privateStore)
+        // WebKit shows an extension's page (options, side panel) as a tab's page only in a web view
+        // made from that extension's configuration; in others it fails with NSURLErrorResourceUnavailable.
+        // ponytail: chosen when the tab wakes; an awake tab that goes to or from an extension page keeps its web view.
+        let extensionPage = store?.privateStore == nil
+            ? url.flatMap { ExtensionManager.shared.controller.extensionContext(for: $0)?.webViewConfiguration } : nil
+        let webView = WebViewFactory.makeWebView(configuration: extensionPage, privateStore: store?.privateStore)
         attach(webView)
         if loadSavedState {
             if let sessionState {

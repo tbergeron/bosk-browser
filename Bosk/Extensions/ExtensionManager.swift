@@ -316,17 +316,20 @@ final class ExtensionManager: NSObject {
 
     /// Installs from an unpacked folder, a .zip file, or a .crx file.
     func install(from source: URL, in window: NSWindow?) async throws {
-        let id = UUID().uuidString
-        let fileName: String
+        // A new folder, so an installed copy with the same ID stays until the user says yes.
+        let fileName = UUID().uuidString
         var sourcePath: String?
         if source.hasDirectoryPath {
-            fileName = id
             sourcePath = source.path
             try FileManager.default.copyItem(at: source, to: directory.appending(path: fileName))
         } else {
-            fileName = id
             try await unpackArchive(Data(contentsOf: source), into: fileName)
         }
+        // Chrome gives an extension with a manifest `key` the ID derived from that key. Native
+        // hosts, OAuth redirect addresses and servers allow only that ID.
+        let manifest = try? JSONSerialization.jsonObject(with: Data(contentsOf: directory.appending(path: "\(fileName)/manifest.json")))
+        let key = (manifest as? [String: Any])?["key"] as? String
+        let id = key.flatMap(ChromeExtensionPackage.extensionID(fromManifestKey:)) ?? fileName
         try await finishInstall(Record(id: id, fileName: fileName, enabled: true, sourcePath: sourcePath), in: window)
     }
 

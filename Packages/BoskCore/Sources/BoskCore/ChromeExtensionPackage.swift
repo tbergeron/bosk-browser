@@ -1,3 +1,4 @@
+import CryptoKit
 import Foundation
 
 /// Chrome extension files (CRX3) and Chrome Web Store addresses.
@@ -60,6 +61,15 @@ public enum ChromeExtensionPackage {
     /// Chrome extension IDs are 32 letters from a to p.
     public static func isExtensionID(_ text: String) -> Bool {
         text.count == 32 && text.allSatisfy { ("a"..."p").contains($0) }
+    }
+
+    /// The ID Chrome gives an extension whose manifest has a `key` (a base64 DER public key):
+    /// the first 16 bytes of the key's SHA-256, each hex digit 0–f written as a letter a–p.
+    /// Nil when the key is not base64. Chrome also ignores whitespace in the key.
+    public static func extensionID(fromManifestKey key: String) -> String? {
+        guard let der = Data(base64Encoded: key.filter { !$0.isWhitespace }), !der.isEmpty else { return nil }
+        let letters = Array("abcdefghijklmnop")
+        return SHA256.hash(data: der).prefix(16).map { "\(letters[Int($0 >> 4)])\(letters[Int($0 & 0xF)])" }.joined()
     }
 
     /// The download address of the CRX file for an extension ID.

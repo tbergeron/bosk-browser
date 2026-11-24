@@ -47,8 +47,18 @@ extension ExtensionManager: WKWebExtensionControllerDelegate {
     func webExtensionController(_ controller: WKWebExtensionController,
                                 openOptionsPageFor extensionContext: WKWebExtensionContext,
                                 completionHandler: @escaping ((any Error)?) -> Void) {
-        if let url = extensionContext.optionsPageURL { focusedWindowController?.store.newTab(url: url) }
+        openOptionsPage(extensionContext.uniqueIdentifier)
         completionHandler(nil)
+    }
+
+    /// Opens the extension's options page in a new tab of the front window (a new window if
+    /// there is none), as Chrome's Options menu item does.
+    func openOptionsPage(_ id: String) {
+        guard let url = contexts[id]?.optionsPageURL,
+              let controller = focusedWindowController ?? (NSApp.delegate as? AppDelegate)?.openWindow(showCommandBar: false)
+        else { return }
+        controller.store.newTab(url: url)
+        controller.window?.makeKeyAndOrderFront(nil) // From Settings, the window is behind it.
     }
 
     func webExtensionController(_ controller: WKWebExtensionController,
